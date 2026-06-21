@@ -1,0 +1,39 @@
+{
+  "name": "40m_inverted_v_90ft_feedlines_preliminary",
+  "description": "Preliminary tool-learning case from 4NEC2. May be replaced after NEC feedline/transposition redo.",
+  "frequency_hz": 7015000,
+  "ports": {
+    "port1": {
+      "z_ohms": {
+        "r": 74.3166,
+        "x": -37.5440
+      }
+    },
+    "port2": {
+      "z_ohms": {
+        "r": 17.7330,
+        "x": 4.6350
+      }
+    }
+  },
+  "target": {
+    "voltage_ratio_v2_over_v1": {
+      "magnitude": 0.356,
+      "phase_deg": 86.6
+    },
+    "input_impedance_ohms": {
+      "r": 50.0,
+      "x": 0.0
+    }
+  },
+  "power_watts": 100.0,
+  "component_assumptions": {
+    "inductor_q": 250,
+    "capacitor_q": 1000
+  },
+  "notes": [
+    "This is a preliminary case based on the 90 ft equal feedline model.",
+    "NEC model may need to be redone due to possible feedline transposition issue.",
+    "Do not treat this as the final design case."
+  ]
+}
