@@ -1,0 +1,44 @@
+* XPhase Topology B export
+* Plain .cir netlist for independent AC verification.
+* Frequency: 7015000 Hz
+* AC source magnitude uses sqrt(Pout * 50 ohms) as an RMS-style convention.
+* Inspect V(port2)/V(port1) for the phasing target.
+* Inspect V(input)/I(Vsrc) with source resistance de-embedded for input impedance.
+Vsrc input_src 0 AC 70.7106781187
+Rsrc input_src input 50
+
+* Input matching section
+RCm_shunt_ESR input cm_shunt_esr 0.012889332538
+Cm_shunt cm_shunt_esr 0 1.76020004546e-09
+RLm_series_ESR input lm_series_esr 0.0935425830996
+Lm_series lm_series_esr split 5.30568941193e-07
+
+* Topology A branch networks
+RL1_ESR split l1_esr 0.0091653902551
+L1 l1_esr port1 5.198564378e-08
+RC1_ESR port1 c1_esr 0.0205027038564
+C1 c1_esr 0 1.10657618031e-09
+RC2_ESR split c2_esr 0.0464483944105
+C2 c2_esr port2 4.88451840099e-10
+RL2_ESR port2 l2_esr 1.28697869356
+L2 l2_esr 0 7.29967999763e-06
+
+* Complex antenna/feedline port loads
+Rload1 port1 load1_x 74.3166
+Cload1 load1_x 0 6.04299054961e-10
+Rload2 port2 load2_x 17.733
+Lload2 load2_x 0 1.0515797024e-07
+
+* AC analysis around the operating frequency
+.ac dec 101 5612000 8418000
+
+* Measurement/inspection helpers
+.meas ac Vratio_mag PARAM mag(V(port2)/V(port1))
+.meas ac Vport1_mag PARAM mag(V(port1))
+.meas ac Vport2_mag PARAM mag(V(port2))
+.meas ac Ibranch1_mag PARAM mag(I(L1))
+.meas ac Ibranch2_mag PARAM mag(I(C2))
+* Capacitor voltage checks: V(port1), V(split,port2), and input-match capacitor node pair.
+* Inductor current checks: I(L1), I(L2), and input-match inductor current.
+* SWR check: compute Zin from input-node voltage/current after accounting for Rsrc.
+.end

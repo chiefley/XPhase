@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import sys
 
@@ -6,11 +7,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from pns.cases import load_case  # noqa: E402
+from pns.ltspice import write_topology_b_ltspice_netlist  # noqa: E402
 from pns.optimize import optimize_topology_b_from_case  # noqa: E402
 from pns.stress import estimate_topology_b_stress_from_case  # noqa: E402
 
 
 def main() -> None:
+    args = _parse_args()
     case_path = REPO_ROOT / "cases" / "40m_inverted_v_90ft_feedlines.json"
     case_data = load_case(case_path)
     result = optimize_topology_b_from_case(case_data)
@@ -68,6 +71,38 @@ def main() -> None:
         "  highest-loss component: "
         f"{highest_loss.name}={highest_loss.loss_watts:.3f} W"
     )
+
+    if args.write_ltspice:
+        output_path = REPO_ROOT / "ltspice" / "xphase_40m_topology_b.cir"
+        written_path = write_topology_b_ltspice_netlist(
+            path=output_path,
+            topology_b_result=result.result,
+            frequency_hz=case_data["frequency_hz"],
+            z1=complex(
+                case_data["ports"]["port1"]["z_ohms"]["r"],
+                case_data["ports"]["port1"]["z_ohms"]["x"],
+            ),
+            z2=complex(
+                case_data["ports"]["port2"]["z_ohms"]["r"],
+                case_data["ports"]["port2"]["z_ohms"]["x"],
+            ),
+            output_power_watts=case_data["power_watts"],
+            inductor_q=case_data["component_assumptions"]["inductor_q"],
+            capacitor_q=case_data["component_assumptions"]["capacitor_q"],
+        )
+        print(f"LTspice netlist: {written_path.relative_to(REPO_ROOT)}")
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Optimize the shipped 40m Topology B case."
+    )
+    parser.add_argument(
+        "--write-ltspice",
+        action="store_true",
+        help="write ltspice/xphase_40m_topology_b.cir",
+    )
+    return parser.parse_args()
 
 
 def _format_value(component_type: str, value: float) -> str:
