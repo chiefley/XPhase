@@ -14,6 +14,7 @@ def export_topology_b_ltspice_netlist(
     z1: complex,
     z2: complex,
     output_power_watts: float = 100.0,
+    z0: float = 50.0,
     include_loss: bool = True,
     inductor_q: float = 250.0,
     capacitor_q: float = 1000.0,
@@ -21,25 +22,32 @@ def export_topology_b_ltspice_netlist(
     """Export a Topology B result as a plain LTspice-compatible .cir netlist."""
     _require_positive("frequency_hz", frequency_hz)
     _require_positive("output_power_watts", output_power_watts)
+    _require_positive("z0", z0)
     _require_positive("inductor_q", inductor_q)
     _require_positive("capacitor_q", capacitor_q)
     if z1.real <= 0 or z2.real <= 0:
         raise ValueError("load impedances must have positive resistance")
 
-    source_ac_voltage = math.sqrt(output_power_watts * 50.0)
+    source_ac_voltage = thevenin_source_voltage_for_matched_power(
+        output_power_watts,
+        z0,
+    )
     start_hz = frequency_hz * 0.8
     stop_hz = frequency_hz * 1.2
     lines = [
         "* XPhase Topology B export",
         "* Plain .cir netlist for independent AC verification.",
         f"* Frequency: {_format_number(frequency_hz)} Hz",
-        "* AC source magnitude uses sqrt(Pout * 50 ohms) as an RMS-style convention.",
+        f"* Vsrc is the Thevenin source voltage with Rsrc={_format_number(z0)} ohms.",
+        "* With a matched input, the network receives output_power_watts.",
         "* Inspect V(port2)/V(port1) for the phasing target.",
+        "* Phase inspection: plot phase(V(port2)/V(port1)) at the operating frequency.",
         "* Inspect V(input)/I(Vsrc) with source resistance de-embedded for input impedance.",
         f"Vsrc input_src 0 AC {_format_number(source_ac_voltage)}",
-        "Rsrc input_src input 50",
+        f"Rsrc input_src input {_format_number(z0)}",
         "",
         "* Input matching section",
+        f"* Match label: {topology_b_result.input_match_topology_name}, {topology_b_result.lmatch_solution.match_orientation}",
     ]
 
     _append_input_match(lines, topology_b_result, frequency_hz, include_loss, inductor_q, capacitor_q)
@@ -129,6 +137,7 @@ def write_topology_b_ltspice_netlist(
     z1: complex,
     z2: complex,
     output_power_watts: float = 100.0,
+    z0: float = 50.0,
     include_loss: bool = True,
     inductor_q: float = 250.0,
     capacitor_q: float = 1000.0,
@@ -140,6 +149,7 @@ def write_topology_b_ltspice_netlist(
         z1=z1,
         z2=z2,
         output_power_watts=output_power_watts,
+        z0=z0,
         include_loss=include_loss,
         inductor_q=inductor_q,
         capacitor_q=capacitor_q,
@@ -148,6 +158,16 @@ def write_topology_b_ltspice_netlist(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(netlist, encoding="utf-8")
     return output_path
+
+
+def thevenin_source_voltage_for_matched_power(
+    power_watts: float,
+    z0: float = 50.0,
+) -> float:
+    """Return Thevenin RMS voltage that delivers power_watts into matched z0."""
+    _require_positive("power_watts", power_watts)
+    _require_positive("z0", z0)
+    return 2.0 * math.sqrt(power_watts * z0)
 
 
 def _append_input_match(

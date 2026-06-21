@@ -1,13 +1,16 @@
 * XPhase Topology B export
 * Plain .cir netlist for independent AC verification.
 * Frequency: 7015000 Hz
-* AC source magnitude uses sqrt(Pout * 50 ohms) as an RMS-style convention.
+* Vsrc is the Thevenin source voltage with Rsrc=50 ohms.
+* With a matched input, the network receives output_power_watts.
 * Inspect V(port2)/V(port1) for the phasing target.
+* Phase inspection: plot phase(V(port2)/V(port1)) at the operating frequency.
 * Inspect V(input)/I(Vsrc) with source resistance de-embedded for input impedance.
-Vsrc input_src 0 AC 70.7106781187
+Vsrc input_src 0 AC 141.421356237
 Rsrc input_src input 50
 
 * Input matching section
+* Match label: B-LP, shunt-then-series
 RCm_shunt_ESR input cm_shunt_esr 0.012889332538
 Cm_shunt cm_shunt_esr 0 1.76020004546e-09
 RLm_series_ESR input lm_series_esr 0.0935425830996

@@ -97,13 +97,27 @@ branches in parallel before input matching.
 
 ### Input Matching Section
 
-Topology B supports two possible input match orientations.
+Topology B supports two input match families. Each family may be realized in
+either mathematical orientation depending on which ideal L-match solution is
+valid for the Split impedance:
+
+- `series-then-shunt`: source/input node -> series element -> Split, with the
+  shunt element at `Split`.
+- `shunt-then-series`: shunt element at the source/input node, then a series
+  element from source/input node to `Split`.
 
 **B-LP** uses a low-pass input L-network:
 
 ```text
 Source/input node -> series Lm -> Split
 Split -> shunt Cm -> return
+```
+
+or, when the valid solution is shunt-then-series:
+
+```text
+Source/input node -> shunt Cm -> return
+Source/input node -> series Lm -> Split
 ```
 
 **B-HP** uses a high-pass input L-network:
@@ -113,8 +127,19 @@ Source/input node -> series Cm -> Split
 Split -> shunt Lm -> return
 ```
 
+or, when the valid solution is shunt-then-series:
+
+```text
+Source/input node -> shunt Lm -> return
+Source/input node -> series Cm -> Split
+```
+
 The input impedance target is measured looking into the source-side input of the
 matching section, not looking directly into `Split`.
+
+Generated reports and LTspice exports should label both the family and the
+actual orientation returned by the matcher, for example `B-LP,
+shunt-then-series`.
 
 ### Topology B Targets
 

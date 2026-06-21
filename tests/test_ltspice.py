@@ -4,6 +4,7 @@ import pytest
 
 from pns.ltspice import (
     export_topology_b_ltspice_netlist,
+    thevenin_source_voltage_for_matched_power,
     write_topology_b_ltspice_netlist,
 )
 from pns.topology_b import evaluate_topology_b_from_components
@@ -77,6 +78,57 @@ def test_exported_netlist_contains_ac_command(topology_b_result):
     )
 
     assert ".ac dec 101" in netlist
+
+
+def test_source_amplitude_uses_thevenin_matched_power_convention(topology_b_result):
+    netlist = export_topology_b_ltspice_netlist(
+        topology_b_result,
+        FREQUENCY_HZ,
+        Z1,
+        Z2,
+        output_power_watts=100.0,
+        z0=50.0,
+    )
+
+    assert thevenin_source_voltage_for_matched_power(100.0, 50.0) == pytest.approx(
+        141.421356237
+    )
+    assert "Vsrc input_src 0 AC 141.421356237" in netlist
+    assert "70.7106781187" not in netlist
+    assert "Thevenin source voltage" in netlist
+    assert "With a matched input, the network receives output_power_watts" in netlist
+
+
+def test_export_rejects_invalid_power_and_z0(topology_b_result):
+    with pytest.raises(ValueError, match="output_power_watts"):
+        export_topology_b_ltspice_netlist(
+            topology_b_result,
+            FREQUENCY_HZ,
+            Z1,
+            Z2,
+            output_power_watts=0,
+        )
+
+    with pytest.raises(ValueError, match="z0"):
+        export_topology_b_ltspice_netlist(
+            topology_b_result,
+            FREQUENCY_HZ,
+            Z1,
+            Z2,
+            z0=0,
+        )
+
+
+def test_exported_netlist_documents_ratio_phase_inspection(topology_b_result):
+    netlist = export_topology_b_ltspice_netlist(
+        topology_b_result,
+        FREQUENCY_HZ,
+        Z1,
+        Z2,
+    )
+
+    assert "phase(V(port2)/V(port1))" in netlist
+    assert "Match label: B-HP, series-then-shunt" in netlist
 
 
 def test_exported_netlist_contains_complex_load_representations(topology_b_result):
