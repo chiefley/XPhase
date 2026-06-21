@@ -9,6 +9,7 @@ from typing import Mapping
 from scipy.optimize import differential_evolution
 
 from pns.cases import case_to_complex_values
+from pns.lmatch import LMatchSolution
 from pns.objectives import (
     ObjectiveWeights,
     TopologyAScore,
@@ -17,6 +18,7 @@ from pns.objectives import (
 )
 from pns.rfmath import complex_to_mag_phase
 from pns.topology_a import TopologyAResult, evaluate_topology_a
+from pns.topology_b import TopologyBResult, evaluate_topology_b_from_components
 
 
 DEFAULT_TOPOLOGY_A_BOUNDS = {
@@ -46,6 +48,22 @@ class TopologyAOptimizationResult:
     components: TopologyAComponentValues
     result: TopologyAResult
     score: TopologyAScore
+
+
+@dataclass(frozen=True)
+class TopologyBOptimizationResult:
+    """Optimization output for a Topology B search."""
+
+    success: bool
+    message: str
+    components: TopologyAComponentValues
+    input_match_solution: LMatchSolution
+    result: TopologyBResult
+    score: TopologyAScore
+    v_ratio_magnitude: float
+    v_ratio_phase_deg: float
+    z_input: complex
+    swr: float
 
 
 @dataclass(frozen=True)
@@ -138,6 +156,113 @@ def optimize_topology_a(
         components=best_components,
         result=best_result,
         score=best_score,
+    )
+
+
+def optimize_topology_b(
+    frequency_hz: float,
+    z1: complex,
+    z2: complex,
+    target_ratio: complex,
+    target_input_impedance: complex = 50 + 0j,
+    bounds: Mapping[str, tuple[float, float]] | None = None,
+    weights: ObjectiveWeights | Mapping[str, float] | None = None,
+    maxiter: int = 60,
+    bound_penalty_weight: float = 0.0,
+) -> TopologyBOptimizationResult:
+    """Search Topology A branch values and add an ideal Topology B input match."""
+    component_bounds = _coerce_bounds(bounds)
+    log_bounds = [_log_bounds(component_bounds[name]) for name in _COMPONENT_ORDER]
+    target_resistance = target_input_impedance.real
+    if target_resistance <= 0 or abs(target_input_impedance.imag) > 1e-12:
+        raise ValueError("target_input_impedance must be a positive real impedance")
+
+    scoring_weights = weights or ObjectiveWeights(
+        magnitude_error_db=1.0,
+        phase_error_deg=1.0,
+        input_r_error_ohms=0.0,
+        input_x_error_ohms=0.0,
+    )
+
+    def objective(log_values):
+        components = _components_from_log_values(log_values)
+        try:
+            result = evaluate_topology_b_from_components(
+                frequency_hz=frequency_hz,
+                z1=z1,
+                z2=z2,
+                l1_h=components.l1_h,
+                c1_f=components.c1_f,
+                c2_f=components.c2_f,
+                l2_h=components.l2_h,
+                target_resistance=target_resistance,
+                z0=target_resistance,
+            )
+            score = score_topology_a_result(
+                result,
+                target_ratio,
+                target_input_impedance=target_input_impedance,
+                weights=scoring_weights,
+            )
+        except (ValueError, ZeroDivisionError, OverflowError):
+            return math.inf
+
+        if not math.isfinite(score.total_score):
+            return math.inf
+
+        return score.total_score + _bound_penalty(
+            components,
+            component_bounds,
+            bound_penalty_weight,
+        )
+
+    optimizer_result = differential_evolution(
+        objective,
+        bounds=log_bounds,
+        maxiter=maxiter,
+        polish=True,
+        seed=1,
+        updating="immediate",
+        workers=1,
+    )
+
+    best_components = _components_from_log_values(optimizer_result.x)
+    best_result = evaluate_topology_b_from_components(
+        frequency_hz=frequency_hz,
+        z1=z1,
+        z2=z2,
+        l1_h=best_components.l1_h,
+        c1_f=best_components.c1_f,
+        c2_f=best_components.c2_f,
+        l2_h=best_components.l2_h,
+        target_resistance=target_resistance,
+        z0=target_resistance,
+    )
+    best_score = score_topology_a_result(
+        best_result,
+        target_ratio,
+        target_input_impedance=target_input_impedance,
+        weights=scoring_weights,
+    )
+    v_ratio_magnitude, v_ratio_phase_deg = complex_to_mag_phase(
+        best_result.v_ratio_v2_over_v1
+    )
+    success = bool(optimizer_result.success or best_score.total_score < 1e-6)
+    message = str(optimizer_result.message)
+    if success and not optimizer_result.success:
+        message = f"score threshold satisfied; {message}"
+
+    return TopologyBOptimizationResult(
+        success=success,
+        message=message,
+        components=best_components,
+        input_match_solution=best_result.lmatch_solution,
+        result=best_result,
+        score=best_score,
+        v_ratio_magnitude=v_ratio_magnitude,
+        v_ratio_phase_deg=v_ratio_phase_deg,
+        z_input=best_result.z_input,
+        swr=best_result.swr,
     )
 
 
@@ -252,6 +377,30 @@ def optimize_topology_a_from_case(
     )
 
 
+def optimize_topology_b_from_case(
+    data: dict,
+    bounds: Mapping[str, tuple[float, float]] | None = None,
+    weights: ObjectiveWeights | Mapping[str, float] | None = None,
+    maxiter: int = 60,
+    bound_penalty_weight: float = 0.0,
+) -> TopologyBOptimizationResult:
+    """Optimize Topology B from a loaded case dictionary."""
+    values = case_to_complex_values(data)
+    targets = case_targets(data)
+
+    return optimize_topology_b(
+        frequency_hz=values["frequency_hz"],
+        z1=values["z1_ohms"],
+        z2=values["z2_ohms"],
+        target_ratio=targets.target_ratio,
+        target_input_impedance=targets.target_input_impedance,
+        bounds=bounds,
+        weights=weights,
+        maxiter=maxiter,
+        bound_penalty_weight=bound_penalty_weight,
+    )
+
+
 _COMPONENT_ORDER = ("l1_h", "c1_f", "c2_f", "l2_h")
 
 
@@ -302,3 +451,29 @@ def _component_bound_proximity(
             proximity[name] = None
 
     return proximity
+
+
+def _bound_penalty(
+    components: TopologyAComponentValues,
+    bounds: Mapping[str, tuple[float, float]],
+    weight: float,
+) -> float:
+    if weight <= 0:
+        return 0.0
+
+    penalty = 0.0
+    for name in _COMPONENT_ORDER:
+        value = getattr(components, name)
+        lower, upper = bounds[name]
+        log_value = math.log(value)
+        log_lower = math.log(lower)
+        log_upper = math.log(upper)
+        span = log_upper - log_lower
+        normalized_distance = min(
+            (log_value - log_lower) / span,
+            (log_upper - log_value) / span,
+        )
+        if normalized_distance < 0.05:
+            penalty += (0.05 - normalized_distance) ** 2
+
+    return weight * penalty
