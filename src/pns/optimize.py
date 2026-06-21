@@ -15,6 +15,7 @@ from pns.objectives import (
     case_targets,
     score_topology_a_result,
 )
+from pns.rfmath import complex_to_mag_phase
 from pns.topology_a import TopologyAResult, evaluate_topology_a
 
 
@@ -45,6 +46,24 @@ class TopologyAOptimizationResult:
     components: TopologyAComponentValues
     result: TopologyAResult
     score: TopologyAScore
+
+
+@dataclass(frozen=True)
+class TopologyACandidateDiagnostics:
+    """Diagnostic values for one scored Topology A candidate."""
+
+    components: TopologyAComponentValues
+    v_ratio_magnitude: float
+    v_ratio_phase_deg: float
+    magnitude_error_db: float
+    phase_error_deg: float
+    z_input: complex
+    input_r_error_ohms: float
+    input_x_error_ohms: float
+    swr: float
+    total_score: float
+    component_bound_proximity: dict[str, str | None]
+    any_component_near_bound: bool
 
 
 def optimize_topology_a(
@@ -122,6 +141,95 @@ def optimize_topology_a(
     )
 
 
+def diagnose_topology_a_candidate(
+    frequency_hz: float,
+    z1: complex,
+    z2: complex,
+    target_ratio: complex,
+    l1_h: float,
+    c1_f: float,
+    c2_f: float,
+    l2_h: float,
+    target_input_impedance: complex = 50 + 0j,
+    bounds: Mapping[str, tuple[float, float]] | None = None,
+    weights: ObjectiveWeights | Mapping[str, float] | None = None,
+) -> TopologyACandidateDiagnostics:
+    """Evaluate and report score diagnostics for one Topology A candidate."""
+    component_bounds = _coerce_bounds(bounds)
+    components = TopologyAComponentValues(
+        l1_h=l1_h,
+        c1_f=c1_f,
+        c2_f=c2_f,
+        l2_h=l2_h,
+    )
+    result = evaluate_topology_a(
+        frequency_hz=frequency_hz,
+        z1=z1,
+        z2=z2,
+        l1_h=components.l1_h,
+        c1_f=components.c1_f,
+        c2_f=components.c2_f,
+        l2_h=components.l2_h,
+    )
+    score = score_topology_a_result(
+        result,
+        target_ratio,
+        target_input_impedance=target_input_impedance,
+        weights=weights,
+    )
+    v_ratio_magnitude, v_ratio_phase_deg = complex_to_mag_phase(
+        result.v_ratio_v2_over_v1
+    )
+    component_bound_proximity = _component_bound_proximity(
+        components,
+        component_bounds,
+    )
+
+    return TopologyACandidateDiagnostics(
+        components=components,
+        v_ratio_magnitude=v_ratio_magnitude,
+        v_ratio_phase_deg=v_ratio_phase_deg,
+        magnitude_error_db=score.magnitude_error_db,
+        phase_error_deg=score.phase_error_deg,
+        z_input=result.z_input,
+        input_r_error_ohms=score.input_r_error_ohms,
+        input_x_error_ohms=score.input_x_error_ohms,
+        swr=score.swr,
+        total_score=score.total_score,
+        component_bound_proximity=component_bound_proximity,
+        any_component_near_bound=any(
+            bound is not None for bound in component_bound_proximity.values()
+        ),
+    )
+
+
+def diagnose_topology_a_optimization(
+    optimization_result: TopologyAOptimizationResult,
+    frequency_hz: float,
+    z1: complex,
+    z2: complex,
+    target_ratio: complex,
+    target_input_impedance: complex = 50 + 0j,
+    bounds: Mapping[str, tuple[float, float]] | None = None,
+    weights: ObjectiveWeights | Mapping[str, float] | None = None,
+) -> TopologyACandidateDiagnostics:
+    """Build diagnostics for an optimizer result."""
+    components = optimization_result.components
+    return diagnose_topology_a_candidate(
+        frequency_hz=frequency_hz,
+        z1=z1,
+        z2=z2,
+        target_ratio=target_ratio,
+        target_input_impedance=target_input_impedance,
+        l1_h=components.l1_h,
+        c1_f=components.c1_f,
+        c2_f=components.c2_f,
+        l2_h=components.l2_h,
+        bounds=bounds,
+        weights=weights,
+    )
+
+
 def optimize_topology_a_from_case(
     data: dict,
     bounds: Mapping[str, tuple[float, float]] | None = None,
@@ -175,3 +283,22 @@ def _components_from_log_values(log_values) -> TopologyAComponentValues:
         c2_f=values[2],
         l2_h=values[3],
     )
+
+
+def _component_bound_proximity(
+    components: TopologyAComponentValues,
+    bounds: Mapping[str, tuple[float, float]],
+) -> dict[str, str | None]:
+    proximity = {}
+
+    for name in _COMPONENT_ORDER:
+        value = getattr(components, name)
+        lower, upper = bounds[name]
+        if value <= lower * 1.01:
+            proximity[name] = "lower"
+        elif value >= upper * 0.99:
+            proximity[name] = "upper"
+        else:
+            proximity[name] = None
+
+    return proximity
