@@ -62,16 +62,16 @@ matching elements; they jointly determine:
 A separate input matching network is allowed only as a later optional extension.
 It is not part of Topology A.
 
-## Next Planned Topology Family
+## Supported Topology B Family
 
-The next planned topology family is **Topology B: Topology A branch networks
-plus an optional input matching L-network**.
+The second supported topology family is **Topology B: Topology A branch
+networks plus an input matching L-network**.
 
 Topology B keeps the Topology A branch section intact and adds an input matching
 section before the split node:
 
 ```text
-50-ohm source -> optional input matching L-network -> Split node -> Topology A branch networks
+50-ohm source -> input matching L-network -> Split node -> Topology A branch networks
 ```
 
 ### Branch Section
@@ -153,12 +153,16 @@ This ratio is measured at the antenna/feedline port nodes. It is not measured at
 the source-side input node and should not use the input matching section voltage
 as either numerator or denominator.
 
-Topology B allows the optimizer to:
+Topology B currently allows the optimizer to:
 
 - Prioritize branch phasing at `Split`.
 - Transform the Split impedance to `50 + j0` at the input.
-- Later evaluate loss and component stress for both branch and input matching
-  parts.
+- Evaluate loss and component stress for both branch and input matching parts
+  after solving.
+
+The current implementation does not yet optimize directly for loss or
+voltage/current stress. Those quantities are reported after the network is
+found.
 
 ## Future Topology Variants
 
