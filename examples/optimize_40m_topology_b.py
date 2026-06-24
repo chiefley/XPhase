@@ -90,7 +90,7 @@ def main() -> None:
             inductor_q=case_data["component_assumptions"]["inductor_q"],
             capacitor_q=case_data["component_assumptions"]["capacitor_q"],
         )
-        print(f"LTspice netlist: {written_path.relative_to(REPO_ROOT)}")
+        print(f"LTspice netlist: {written_path.resolve()}")
 
 
 def _parse_args() -> argparse.Namespace:

@@ -1,0 +1,47 @@
+* XPhase Topology B ngspice verification export
+* Plain .cir netlist for automated AC verification.
+* Frequency: 7015000 Hz
+* Vsrc is the Thevenin source voltage with Rsrc=50 ohms.
+Vsrc input_src 0 AC 141.421356237
+Rsrc input_src input 50
+
+* Input matching section
+* Match label: B-LP, shunt-then-series
+Cm_shunt input 0 1.76020004546e-09
+Lm_series input split 5.30568941193e-07
+
+* Topology A branch networks
+L1 split port1 5.198564378e-08
+C1 port1 0 1.10657618031e-09
+C2 split port2 4.88451840099e-10
+L2 port2 0 7.29967999763e-06
+
+* Complex antenna/feedline port loads
+Rload1 port1 load1_x 74.3166
+Cload1 load1_x 0 6.04299054961e-10
+Rload2 port2 load2_x 17.733
+Lload2 load2_x 0 1.0515797024e-07
+
+* Exact single-frequency AC analysis
+.ac lin 1 7015000 7015000
+
+.control
+set noaskquit
+set numdgt=15
+run
+let xphase_vratio = v(port2) / v(port1)
+let xphase_vratio_mag = mag(xphase_vratio)
+let xphase_vratio_phase_deg = 180.0 / pi * phase(xphase_vratio)
+echo XPHASE_BEGIN
+print xphase_vratio
+print xphase_vratio_mag
+print xphase_vratio_phase_deg
+print v(input)
+print i(lm_series)
+print i(l1)
+print i(c2)
+print i(l2)
+echo XPHASE_END
+quit
+.endc
+.end

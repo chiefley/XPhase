@@ -146,7 +146,7 @@ def test_exported_netlist_contains_complex_load_representations(topology_b_resul
 
 
 def test_write_topology_b_ltspice_netlist_creates_file(tmp_path, topology_b_result):
-    output_path = tmp_path / "xphase_40m_topology_b.cir"
+    output_path = tmp_path / "ltspice" / "xphase_40m_topology_b.cir"
 
     written_path = write_topology_b_ltspice_netlist(
         output_path,
@@ -158,4 +158,21 @@ def test_write_topology_b_ltspice_netlist_creates_file(tmp_path, topology_b_resu
 
     assert written_path == output_path
     assert Path(output_path).exists()
+    assert output_path.name == "xphase_40m_topology_b.cir"
+    assert output_path.suffix == ".cir"
     assert "Vsrc" in output_path.read_text(encoding="utf-8")
+
+
+def test_write_topology_b_ltspice_netlist_rejects_non_cir_path(
+    tmp_path, topology_b_result
+):
+    output_path = tmp_path / "ltspice" / "xphase_40m_topology_b.net"
+
+    with pytest.raises(ValueError, match=r"\.cir"):
+        write_topology_b_ltspice_netlist(
+            output_path,
+            topology_b_result,
+            FREQUENCY_HZ,
+            Z1,
+            Z2,
+        )

@@ -155,6 +155,8 @@ def write_topology_b_ltspice_netlist(
         capacitor_q=capacitor_q,
     )
     output_path = Path(path)
+    if output_path.suffix.lower() != ".cir":
+        raise ValueError("LTspice netlist path must use a .cir extension")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(netlist, encoding="utf-8")
     return output_path
