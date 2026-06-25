@@ -1,0 +1,91 @@
+{
+  "name": "40m_inverted_v_feedpoints_plus_y_7020khz",
+  "description": "NEC +Y forward-direction feedpoint case at 7.020 MHz. Source #1 is the rear -Y element; source #2 is the forward +Y element and voltage phase reference.",
+  "frequency_hz": 7020000,
+  "reference_plane": "nec_feedpoint",
+  "pattern": {
+    "desired_forward_direction": "+Y",
+    "forward_source": "source2",
+    "rear_source": "source1",
+    "optimizer_varied_source": "source1",
+    "voltage_phase_reference_source": "source2"
+  },
+  "ports": {
+    "port1": {
+      "source": "source1",
+      "role": "rear_element_minus_y",
+      "reference_plane": "nec_feedpoint",
+      "nec_voltage_v": {
+        "r": 0.636791,
+        "x": 0.378847
+      },
+      "nec_current_a": {
+        "r": 0.00168905,
+        "x": 0.0170836
+      },
+      "z_ohms": {
+        "r": 25.6111,
+        "x": -34.7429
+      }
+    },
+    "port2": {
+      "source": "source2",
+      "role": "forward_element_plus_y",
+      "reference_plane": "nec_feedpoint",
+      "nec_voltage_v": {
+        "r": 1.0,
+        "x": 0.0
+      },
+      "nec_current_a": {
+        "r": 0.0133453,
+        "x": -0.0101157
+      },
+      "z_ohms": {
+        "r": 47.5898,
+        "x": 36.0728
+      }
+    }
+  },
+  "fixed_feedlines": {
+    "description": "Example fixed lossless coax lengths for transforming NEC feedpoint impedances to phasing-box-end impedances. This is case metadata for the fixed-feedline example, not a generalized feedline sweep schema.",
+    "port1": {
+      "characteristic_impedance_ohms": 50.0,
+      "velocity_factor": 0.66,
+      "length_ft": 70.0,
+      "polarity": "normal"
+    },
+    "port2": {
+      "characteristic_impedance_ohms": 50.0,
+      "velocity_factor": 0.66,
+      "length_ft": 70.0,
+      "polarity": "normal"
+    }
+  },
+  "target": {
+    "voltage_ratio_v2_over_v1": {
+      "magnitude": 1.34942,
+      "phase_deg": -30.744
+    },
+    "future_current_ratio_i2_over_i1": {
+      "magnitude": 0.97468,
+      "phase_deg": -121.499,
+      "status": "documentation_only"
+    },
+    "input_impedance_ohms": {
+      "r": 50.0,
+      "x": 0.0
+    }
+  },
+  "power_watts": 100.0,
+  "component_assumptions": {
+    "inductor_q": 250,
+    "capacitor_q": 1000
+  },
+  "notes": [
+    "This case starts from true NEC antenna feedpoint impedances, not phasing-box-end impedances.",
+    "The current voltage-ratio optimizer uses target.voltage_ratio_v2_over_v1 only.",
+    "The current-ratio target is preserved as metadata for future current-ratio optimization.",
+    "The fixed feedlines are transformed by examples/optimize_40m_feedpoints_fixed_feedlines.py before calling the existing Topology B optimizer.",
+    "Feedline loss, length sweep, and polarity handling are not implemented in this case."
+  ]
+}
