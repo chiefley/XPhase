@@ -6,8 +6,8 @@ The long-term workflow is:
 
 1. Use an NEC-based antenna modeling tool, such as 4NEC2, AutoEZ, or another NEC front end, to optimize the physical array for the desired pattern objective: gain, front-to-back ratio, elevation angle, or other operating goal.
 2. Give XPhase the resulting NEC-derived two-port feedpoint information and the desired element excitation ratio.
-3. Specify the physically practical feedline length ranges for the installation, along with coax impedance, velocity factor, and loss assumptions.
-4. Let XPhase sweep candidate feedline-length combinations, transform the feedpoint impedances through those feedlines, synthesize matching/phasing networks, and rank the resulting designs by RF correctness and practical buildability.
+3. Specify the physically practical feedline length ranges for the installation, along with coax impedance, velocity factor, loss assumptions, and whether each element feedline path is normal or intentionally inverted.
+4. Let XPhase sweep candidate feedline-length and feedline-polarity combinations, transform the feedpoint impedances through those feedlines, synthesize matching/phasing networks, and rank the resulting designs by RF correctness and practical buildability.
 
 The first target case is a 40-meter two-element phased inverted-V array. Antenna modeling is currently done externally in NEC/4NEC2/AutoEZ. The present code takes fixed NEC-derived complex port/feedline impedances and a desired port voltage ratio, then searches lumped-component network topologies.
 
@@ -28,6 +28,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 ## Current limitations
 
 - coax length ranges are not searched yet
+- feedline polarity/inversion combinations are not searched yet
 - case files provide fixed complex port/feedline impedances
 - target element current ratio is not yet a first-class input
 - bandwidth scoring is not implemented yet
