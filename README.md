@@ -1,12 +1,22 @@
-# Phased Network Synthesizer
+# XPhase / Phased Network Synthesizer
 
-A small Python tool for synthesizing lumped L/C phasing and matching networks for coupled amateur-radio antenna arrays.
+XPhase is a Python tool for designing practical phasing and matching systems for two-element amateur-radio HF antenna arrays.
 
-The first target case is a 40-meter two-element phased inverted-V array. Antenna modeling is done externally in NEC/4NEC2/AutoEZ. This program takes NEC-derived complex port impedances and a desired port voltage or current ratio, then searches practical lumped-component network topologies.
+The long-term workflow is:
 
-Current implemented scope:
+1. Use an NEC-based antenna modeling tool, such as 4NEC2, AutoEZ, or another NEC front end, to optimize the physical array for the desired pattern objective: gain, front-to-back ratio, elevation angle, or other operating goal.
+2. Give XPhase the resulting NEC-derived two-port feedpoint information and the desired element excitation ratio.
+3. Specify the physically practical feedline length ranges for the installation, along with coax impedance, velocity factor, and loss assumptions.
+4. Let XPhase sweep candidate feedline-length combinations, transform the feedpoint impedances through those feedlines, synthesize matching/phasing networks, and rank the resulting designs by RF correctness and practical buildability.
+
+The first target case is a 40-meter two-element phased inverted-V array. Antenna modeling is currently done externally in NEC/4NEC2/AutoEZ. The present code takes fixed NEC-derived complex port/feedline impedances and a desired port voltage ratio, then searches lumped-component network topologies.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
+
+## Current implemented scope
+
 - two complex antenna/feedline port loads
-- target V2/V1 magnitude and phase
+- target `V2/V1` magnitude and phase
 - target 50-ohm input impedance
 - fixed Topology A and Topology B network search
 - Topology B input L-match synthesis
@@ -15,18 +25,23 @@ Current implemented scope:
 - LTspice netlist export
 - optional ngspice batch verification
 
-Current limitations:
+## Current limitations
+
 - coax length ranges are not searched yet
 - case files provide fixed complex port/feedline impedances
-- component voltage/current/loss are reported after optimization, not used as
-  primary optimization objectives yet
+- target element current ratio is not yet a first-class input
+- bandwidth scoring is not implemented yet
+- NEC output parsing is not implemented yet
+- component voltage/current/loss are reported after optimization, not used as primary optimization objectives yet
 - practical part series and discrete component selections are not modeled yet
 
-Out of scope for the current version:
+## Out of scope for the current version
+
 - GUI
-- direct NEC file parsing
 - automatic antenna geometry optimization
 - relay control or hardware design
+
+NEC parsing is a desired future feature, but XPhase should not attempt to replace NEC antenna modeling. NEC remains the antenna-physics engine; XPhase is the feed-system synthesis, verification, and practicality-ranking engine.
 
 ## Examples
 
@@ -60,5 +75,4 @@ This creates:
 ngspice/xphase_40m_topology_b.cir
 ```
 
-and compares ngspice's simulated `V(port2)/V(port1)` against XPhase's computed
-ideal Topology B result.
+and compares ngspice's simulated `V(port2)/V(port1)` against XPhase's computed ideal Topology B result.
