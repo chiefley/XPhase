@@ -20,6 +20,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 - target 50-ohm input impedance
 - fixed Topology A and Topology B network search
 - Topology B input L-match synthesis
+- additive lossless feedpoint-to-box-end coax transformation layer
 - post-solve component voltage/current estimates
 - estimated loss using component Q
 - LTspice netlist export
@@ -29,7 +30,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 
 - coax length ranges are not searched yet
 - feedline polarity/inversion combinations are not searched yet
-- case files provide fixed complex port/feedline impedances
+- case files still provide fixed complex port/feedline impedances
 - target element current ratio is not yet a first-class input
 - bandwidth scoring is not implemented yet
 - NEC output parsing is not implemented yet
@@ -50,6 +51,13 @@ Run the shipped 40-meter Topology B example:
 
 ```bash
 python3 examples/optimize_40m_topology_b.py
+```
+
+Demonstrate the additive lossless feedpoint-to-box-end transform layer without
+running the optimizer:
+
+```bash
+python3 examples/transform_40m_feedpoints.py
 ```
 
 Write the LTspice netlist:
