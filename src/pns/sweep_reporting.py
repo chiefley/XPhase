@@ -14,6 +14,8 @@ CSV_FIELDNAMES = (
     "rank_math_within_mode",
     "rank_practical_combined",
     "mode",
+    "polarity",
+    "target_ratio_was_inverted",
     "common_length",
     "offset",
     "port1_length",
@@ -47,6 +49,8 @@ class SweepCandidateSummary:
     """Compact reporting summary for one feedline sweep candidate."""
 
     mode: str
+    polarity: str
+    target_ratio_was_inverted: bool
     common_length: float
     offset: float | None
     port1_length: float
@@ -140,6 +144,8 @@ def summary_to_csv_row(
         "rank_math_within_mode": _csv_optional(rank_math_within_mode),
         "rank_practical_combined": _csv_optional(rank_practical_combined),
         "mode": summary.mode,
+        "polarity": summary.polarity,
+        "target_ratio_was_inverted": summary.target_ratio_was_inverted,
         "common_length": summary.common_length,
         "offset": _csv_optional(summary.offset),
         "port1_length": summary.port1_length,
@@ -257,6 +263,12 @@ def _summary(
     warnings = practical_warnings(result)
     return SweepCandidateSummary(
         mode=mode,
+        polarity=getattr(result, "polarity", "normal"),
+        target_ratio_was_inverted=getattr(
+            result,
+            "target_ratio_was_inverted",
+            False,
+        ),
         common_length=common_length,
         offset=offset,
         port1_length=port1_length,
