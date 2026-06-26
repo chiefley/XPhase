@@ -1,3 +1,4 @@
+import csv
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
@@ -5,10 +6,14 @@ from types import SimpleNamespace
 import pytest
 
 from pns.sweep_reporting import (
+    CSV_FIELDNAMES,
+    SweepCandidateSummary,
     practical_sort_key,
+    summary_to_csv_row,
     summarize_equal_length_result,
     summarize_offset_result,
     summarize_sweep_result,
+    write_summaries_csv,
 )
 
 
@@ -108,6 +113,86 @@ def test_comparison_example_limit_parser_rejects_nonpositive_limit():
         module._parse_args(["--limit", "0"])
 
 
+def test_summary_to_csv_row_serializes_representative_summary():
+    summary = _candidate_summary()
+
+    row = summary_to_csv_row(
+        summary,
+        rank_math_within_mode=2,
+        rank_practical_combined=7,
+    )
+
+    assert row["rank_math_within_mode"] == 2
+    assert row["rank_practical_combined"] == 7
+    assert row["mode"] == "offset"
+    assert row["offset"] == 10.0
+    assert row["port1_box_r_ohms"] == pytest.approx(50.0)
+    assert row["port2_box_x_ohms"] == pytest.approx(-2.0)
+    assert row["warnings"] == "C2 high current; L1 high loss"
+
+
+def test_summary_to_csv_row_serializes_missing_optional_values_as_empty_strings():
+    summary = _candidate_summary(
+        offset=None,
+        total_estimated_loss_watts=None,
+        estimated_efficiency_percent=None,
+        worst_rms_voltage=None,
+        worst_rms_voltage_component=None,
+        worst_rms_current=None,
+        worst_rms_current_component=None,
+        worst_component_loss_watts=None,
+        worst_component_loss_name=None,
+    )
+
+    row = summary_to_csv_row(summary)
+
+    assert row["offset"] == ""
+    assert row["total_estimated_loss_watts"] == ""
+    assert row["estimated_efficiency_percent"] == ""
+    assert row["worst_rms_voltage"] == ""
+    assert row["worst_rms_voltage_component"] == ""
+    assert row["worst_rms_current"] == ""
+    assert row["worst_rms_current_component"] == ""
+    assert row["worst_component_loss_watts"] == ""
+    assert row["worst_component_loss_name"] == ""
+
+
+def test_write_summaries_csv_creates_file_with_header_and_row(tmp_path):
+    summary = _candidate_summary()
+    output_path = tmp_path / "reports" / "comparison.csv"
+
+    written_path = write_summaries_csv(
+        output_path,
+        (summary,),
+        practical_ordered_summaries=(summary,),
+        math_rank_by_mode={summary: 1},
+    )
+
+    assert written_path == output_path
+    with output_path.open(newline="") as input_file:
+        reader = csv.DictReader(input_file)
+        rows = list(reader)
+
+    assert reader.fieldnames == list(CSV_FIELDNAMES)
+    assert len(rows) == 1
+    assert rows[0]["rank_math_within_mode"] == "1"
+    assert rows[0]["rank_practical_combined"] == "1"
+    assert rows[0]["mode"] == "offset"
+    assert rows[0]["warnings"] == "C2 high current; L1 high loss"
+
+
+def test_comparison_example_parser_accepts_write_csv_and_custom_csv_path():
+    module = _load_compare_example_module()
+
+    args = module._parse_args(
+        ["--limit", "3", "--write-csv", "--csv-path", "reports/custom.csv"]
+    )
+
+    assert args.limit == 3
+    assert args.write_csv is True
+    assert args.csv_path == Path("reports/custom.csv")
+
+
 def _result(mode: str, stress_report=None):
     candidate = (
         SimpleNamespace(
@@ -187,6 +272,36 @@ def _summary(
         worst_rms_voltage=worst_rms_voltage,
         swr=1.0,
     )
+
+
+def _candidate_summary(**overrides):
+    values = {
+        "mode": "offset",
+        "common_length": 75.0,
+        "offset": 10.0,
+        "port1_length": 75.0,
+        "port2_length": 85.0,
+        "length_unit": "ft",
+        "port1_box_impedance_ohms": 50 + 1j,
+        "port2_box_impedance_ohms": 60 - 2j,
+        "achieved_ratio_magnitude": 1.34942,
+        "achieved_ratio_phase_deg": -30.744,
+        "zin_ohms": 50 + 0.5j,
+        "swr": 1.02,
+        "score_or_objective": 0.01,
+        "total_estimated_loss_watts": 8.5,
+        "estimated_efficiency_percent": 92.0,
+        "worst_rms_voltage": 250.0,
+        "worst_rms_voltage_component": "C2",
+        "worst_rms_current": 4.5,
+        "worst_rms_current_component": "L1",
+        "worst_component_loss_watts": 3.0,
+        "worst_component_loss_name": "L1",
+        "warning_count": 2,
+        "warnings": ("C2 high current", "L1 high loss"),
+    }
+    values.update(overrides)
+    return SweepCandidateSummary(**values)
 
 
 def _load_compare_example_module():

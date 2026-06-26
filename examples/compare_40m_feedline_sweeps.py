@@ -19,7 +19,11 @@ from pns.sweep_reporting import (  # noqa: E402
     format_optional_voltage,
     practical_sort_key,
     summarize_sweep_result,
+    write_summaries_csv,
 )
+
+
+DEFAULT_CSV_PATH = REPO_ROOT / "reports" / "40m_feedline_sweep_comparison.csv"
 
 
 def main() -> None:
@@ -70,6 +74,7 @@ def main() -> None:
     practical_summaries = tuple(
         sorted((*equal_summaries, *offset_summaries), key=practical_sort_key)
     )
+    combined_summaries = (*equal_summaries, *offset_summaries)
 
     print("Center-frequency feedline sweep comparison only.")
     print("This is not bandwidth evaluation, current-ratio optimization, or NEC pattern verification.")
@@ -86,6 +91,15 @@ def main() -> None:
     _print_section("B: top mathematical offset candidates", offset_summaries, args)
     _print_section("C: top practical-screen candidates from combined set", practical_summaries, args)
 
+    if args.write_csv:
+        csv_path = write_summaries_csv(
+            args.csv_path,
+            combined_summaries,
+            practical_ordered_summaries=practical_summaries,
+            math_rank_by_mode=_math_rank_by_mode(equal_summaries, offset_summaries),
+        )
+        print(f"CSV written: {csv_path.resolve()}")
+
 
 def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -101,6 +115,17 @@ def _parse_args(argv=None) -> argparse.Namespace:
         "--show-all",
         action="store_true",
         help="show every result in each section",
+    )
+    parser.add_argument(
+        "--write-csv",
+        action="store_true",
+        help="write the combined candidate set to CSV",
+    )
+    parser.add_argument(
+        "--csv-path",
+        type=Path,
+        default=DEFAULT_CSV_PATH,
+        help=f"CSV output path when --write-csv is used; default: {DEFAULT_CSV_PATH}",
     )
     return parser.parse_args(argv)
 
@@ -168,6 +193,14 @@ def _positive_int(value: str) -> int:
     if parsed <= 0:
         raise argparse.ArgumentTypeError("limit must be greater than 0")
     return parsed
+
+
+def _math_rank_by_mode(equal_summaries, offset_summaries) -> dict:
+    ranked = {}
+    for summaries in (equal_summaries, offset_summaries):
+        for rank, summary in enumerate(summaries, start=1):
+            ranked[summary] = rank
+    return ranked
 
 
 if __name__ == "__main__":
