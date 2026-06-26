@@ -37,11 +37,17 @@ def test_summary_extraction_works_for_equal_length_result_like_object():
 
 
 def test_summary_extraction_works_for_offset_result_like_object():
-    result = _result(mode="offset", stress_report=_stress_report())
+    result = _result(
+        mode="offset",
+        stress_report=_stress_report(),
+        polarity="invert_port2",
+    )
 
     summary = summarize_offset_result(result)
 
     assert summary.mode == "offset"
+    assert summary.polarity == "invert_port2"
+    assert summary.target_ratio_was_inverted is True
     assert summary.common_length == pytest.approx(75.0)
     assert summary.offset == pytest.approx(10.0)
     assert summary.port1_length == pytest.approx(75.0)
@@ -125,6 +131,8 @@ def test_summary_to_csv_row_serializes_representative_summary():
     assert row["rank_math_within_mode"] == 2
     assert row["rank_practical_combined"] == 7
     assert row["mode"] == "offset"
+    assert row["polarity"] == "invert_port1"
+    assert row["target_ratio_was_inverted"] is True
     assert row["offset"] == 10.0
     assert row["port1_box_r_ohms"] == pytest.approx(50.0)
     assert row["port2_box_x_ohms"] == pytest.approx(-2.0)
@@ -193,7 +201,15 @@ def test_comparison_example_parser_accepts_write_csv_and_custom_csv_path():
     assert args.csv_path == Path("reports/custom.csv")
 
 
-def _result(mode: str, stress_report=None):
+def test_comparison_example_parser_accepts_include_polarity_variants():
+    module = _load_compare_example_module()
+
+    args = module._parse_args(["--include-polarity-variants"])
+
+    assert args.include_polarity_variants is True
+
+
+def _result(mode: str, stress_report=None, polarity: str = "normal"):
     candidate = (
         SimpleNamespace(
             common_length=70.0,
@@ -234,6 +250,8 @@ def _result(mode: str, stress_report=None):
         swr=1.0,
         score_or_objective=0.1,
         stress_report=stress_report,
+        polarity=polarity,
+        target_ratio_was_inverted=polarity != "normal",
     )
 
 
@@ -277,6 +295,8 @@ def _summary(
 def _candidate_summary(**overrides):
     values = {
         "mode": "offset",
+        "polarity": "invert_port1",
+        "target_ratio_was_inverted": True,
         "common_length": 75.0,
         "offset": 10.0,
         "port1_length": 75.0,

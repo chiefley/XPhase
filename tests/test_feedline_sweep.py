@@ -10,6 +10,7 @@ from pns.feedline import (
     transform_two_feedpoints_to_box_end,
 )
 from pns.feedline_sweep import (
+    adjusted_target_ratio_for_polarity,
     equal_length_grid,
     format_component_value,
     generate_equal_length_feedline_candidates,
@@ -26,6 +27,24 @@ Z1_FEEDPOINT = 25.6111 - 34.7429j
 Z2_FEEDPOINT = 47.5898 + 36.0728j
 Z0 = 50.0
 VELOCITY_FACTOR = 0.66
+
+
+def test_adjusted_target_ratio_normal_returns_original_ratio():
+    target = 1.2 - 0.4j
+
+    assert adjusted_target_ratio_for_polarity(target, "normal") == target
+
+
+@pytest.mark.parametrize("polarity", ("invert_port1", "invert_port2"))
+def test_adjusted_target_ratio_inverted_port_returns_negative_ratio(polarity):
+    target = 1.2 - 0.4j
+
+    assert adjusted_target_ratio_for_polarity(target, polarity) == -target
+
+
+def test_adjusted_target_ratio_invalid_polarity_raises_clear_error():
+    with pytest.raises(ValueError, match="invalid polarity"):
+        adjusted_target_ratio_for_polarity(1 + 0j, "invert_both")
 
 
 def test_equal_length_grid_includes_start():
@@ -235,6 +254,8 @@ def test_one_candidate_optimization_sweep_runs_and_returns_one_ranked_result():
     assert results[0].achieved_ratio_magnitude > 0
     assert results[0].swr >= 1.0
     assert results[0].score_or_objective >= 0
+    assert results[0].polarity == "normal"
+    assert results[0].target_ratio_was_inverted is False
 
 
 def test_one_candidate_offset_optimization_sweep_runs_and_returns_one_result():
@@ -264,6 +285,57 @@ def test_one_candidate_offset_optimization_sweep_runs_and_returns_one_result():
     assert results[0].achieved_ratio_magnitude > 0
     assert results[0].swr >= 1.0
     assert results[0].score_or_objective >= 0
+    assert results[0].polarity == "normal"
+    assert results[0].target_ratio_was_inverted is False
+
+
+def test_equal_length_polarity_variants_produce_three_results():
+    results = optimize_equal_length_feedline_sweep(
+        z1_feedpoint_ohms=Z1_FEEDPOINT,
+        z2_feedpoint_ohms=Z2_FEEDPOINT,
+        frequency_hz=FREQUENCY_HZ,
+        target_voltage_ratio_magnitude=1.34942,
+        target_voltage_ratio_phase_deg=-30.744,
+        start_length=70.0,
+        stop_length=70.0,
+        step=5.0,
+        maxiter=2,
+        polarities=("normal", "invert_port1", "invert_port2"),
+    )
+
+    assert len(results) == 3
+    assert {result.polarity for result in results} == {
+        "normal",
+        "invert_port1",
+        "invert_port2",
+    }
+    assert sum(result.target_ratio_was_inverted for result in results) == 2
+
+
+def test_offset_polarity_variants_produce_three_results():
+    results = optimize_offset_feedline_sweep(
+        z1_feedpoint_ohms=Z1_FEEDPOINT,
+        z2_feedpoint_ohms=Z2_FEEDPOINT,
+        frequency_hz=FREQUENCY_HZ,
+        target_voltage_ratio_magnitude=1.34942,
+        target_voltage_ratio_phase_deg=-30.744,
+        start_common_length=70.0,
+        stop_common_length=70.0,
+        common_step=5.0,
+        start_offset=0.0,
+        stop_offset=0.0,
+        offset_step=5.0,
+        maxiter=2,
+        polarities=("normal", "invert_port1", "invert_port2"),
+    )
+
+    assert len(results) == 3
+    assert {result.polarity for result in results} == {
+        "normal",
+        "invert_port1",
+        "invert_port2",
+    }
+    assert sum(result.target_ratio_was_inverted for result in results) == 2
 
 
 def test_component_value_formatting_uses_human_readable_units():

@@ -23,6 +23,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 - additive lossless feedpoint-to-box-end coax transformation layer
 - equal-length feedline sweep at the design frequency
 - differential/offset feedline sweep at the design frequency
+- normal, port-1-inverted, and port-2-inverted voltage-reference variants
 - post-solve component voltage/current estimates
 - estimated loss using component Q
 - LTspice netlist export
@@ -32,7 +33,6 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 
 - general coax length ranges are not searched yet
 - full independent feedline length grids are not searched yet
-- feedline polarity/inversion combinations are not searched yet
 - case files still provide fixed complex port/feedline impedances
 - target element current ratio is not yet a first-class input
 - bandwidth scoring is not implemented yet
@@ -75,6 +75,21 @@ Write the same combined sweep comparison data to CSV:
 ```bash
 python3 examples/compare_40m_feedline_sweeps.py --write-csv
 ```
+
+Compare normal and single-port-inverted voltage-reference variants:
+
+```bash
+python3 examples/compare_40m_feedline_sweeps.py --include-polarity-variants
+```
+
+Write all physical and polarity candidates to CSV:
+
+```bash
+python3 examples/compare_40m_feedline_sweeps.py --include-polarity-variants --write-csv
+```
+
+Polarity inversion does not change the feedpoint impedance transform. Inverting
+either port changes the optimizer target `V2/V1` ratio by 180 degrees.
 
 Write the LTspice netlist:
 

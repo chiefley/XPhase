@@ -22,6 +22,9 @@ from pns.rfmath import polar_to_complex
 from pns.stress import TopologyBStressReport, estimate_topology_b_stress
 
 
+VALID_POLARITIES = ("normal", "invert_port1", "invert_port2")
+
+
 @dataclass(frozen=True)
 class EqualLengthFeedlineCandidate:
     """One equal physical feedline length transformed to box-end impedances."""
@@ -47,6 +50,8 @@ class EqualLengthOptimizationSweepResult:
     swr: float
     score_or_objective: float
     stress_report: TopologyBStressReport | None = None
+    polarity: str = "normal"
+    target_ratio_was_inverted: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,8 @@ class OffsetOptimizationSweepResult:
     swr: float
     score_or_objective: float
     stress_report: TopologyBStressReport | None = None
+    polarity: str = "normal"
+    target_ratio_was_inverted: bool = False
 
 
 def equal_length_grid(
@@ -134,6 +141,25 @@ def offset_grid(
         index += 1
 
     return tuple(values)
+
+
+def adjusted_target_ratio_for_polarity(
+    target_ratio: complex,
+    polarity: str,
+) -> complex:
+    """Adjust a voltage-ratio target for one feedline polarity convention.
+
+    Inverting either port reverses that port's voltage/current reference and
+    changes the requested ``V2/V1`` ratio by 180 degrees. Feedpoint impedance
+    transformation is unchanged.
+    """
+    if polarity == "normal":
+        return target_ratio
+    if polarity in {"invert_port1", "invert_port2"}:
+        return -target_ratio
+    raise ValueError(
+        f"invalid polarity {polarity!r}; expected one of {VALID_POLARITIES}"
+    )
 
 
 def generate_equal_length_feedline_candidates(
@@ -229,8 +255,9 @@ def optimize_equal_length_feedline_sweep(
     input_power_watts: float | None = None,
     inductor_q: float = 250.0,
     capacitor_q: float = 1000.0,
+    polarities: tuple[str, ...] = ("normal",),
 ) -> tuple[EqualLengthOptimizationSweepResult, ...]:
-    """Run Topology B optimization over equal-length feedline candidates."""
+    """Run Topology B optimization over equal-length and polarity candidates."""
     candidates = generate_equal_length_feedline_candidates(
         z1_feedpoint_ohms=z1_feedpoint_ohms,
         z2_feedpoint_ohms=z2_feedpoint_ohms,
@@ -246,41 +273,49 @@ def optimize_equal_length_feedline_sweep(
         target_voltage_ratio_magnitude,
         target_voltage_ratio_phase_deg,
     )
+    validated_polarities = _validated_polarities(polarities)
     results = []
     for candidate in candidates:
-        optimization_result = optimize_topology_b(
-            frequency_hz=frequency_hz,
-            z1=candidate.port1_box_impedance_ohms,
-            z2=candidate.port2_box_impedance_ohms,
-            target_ratio=target_ratio,
-            target_input_impedance=target_input_impedance_ohms,
-            weights=weights,
-            maxiter=maxiter,
-            bound_penalty_weight=bound_penalty_weight,
-        )
-        stress_report = None
-        if input_power_watts is not None:
-            stress_report = estimate_topology_b_stress(
-                result=optimization_result.result,
+        for polarity in validated_polarities:
+            adjusted_target_ratio = adjusted_target_ratio_for_polarity(
+                target_ratio,
+                polarity,
+            )
+            optimization_result = optimize_topology_b(
                 frequency_hz=frequency_hz,
                 z1=candidate.port1_box_impedance_ohms,
                 z2=candidate.port2_box_impedance_ohms,
-                input_power_watts=input_power_watts,
-                inductor_q=inductor_q,
-                capacitor_q=capacitor_q,
+                target_ratio=adjusted_target_ratio,
+                target_input_impedance=target_input_impedance_ohms,
+                weights=weights,
+                maxiter=maxiter,
+                bound_penalty_weight=bound_penalty_weight,
             )
-        results.append(
-            EqualLengthOptimizationSweepResult(
-                candidate=candidate,
-                optimization_result=optimization_result,
-                achieved_ratio_magnitude=optimization_result.v_ratio_magnitude,
-                achieved_ratio_phase_deg=optimization_result.v_ratio_phase_deg,
-                zin_ohms=optimization_result.z_input,
-                swr=optimization_result.swr,
-                score_or_objective=optimization_result.score.total_score,
-                stress_report=stress_report,
+            stress_report = None
+            if input_power_watts is not None:
+                stress_report = estimate_topology_b_stress(
+                    result=optimization_result.result,
+                    frequency_hz=frequency_hz,
+                    z1=candidate.port1_box_impedance_ohms,
+                    z2=candidate.port2_box_impedance_ohms,
+                    input_power_watts=input_power_watts,
+                    inductor_q=inductor_q,
+                    capacitor_q=capacitor_q,
+                )
+            results.append(
+                EqualLengthOptimizationSweepResult(
+                    candidate=candidate,
+                    optimization_result=optimization_result,
+                    achieved_ratio_magnitude=optimization_result.v_ratio_magnitude,
+                    achieved_ratio_phase_deg=optimization_result.v_ratio_phase_deg,
+                    zin_ohms=optimization_result.z_input,
+                    swr=optimization_result.swr,
+                    score_or_objective=optimization_result.score.total_score,
+                    stress_report=stress_report,
+                    polarity=polarity,
+                    target_ratio_was_inverted=polarity != "normal",
+                )
             )
-        )
 
     return tuple(sorted(results, key=_ranking_key))
 
@@ -307,6 +342,7 @@ def optimize_offset_feedline_sweep(
     input_power_watts: float | None = None,
     inductor_q: float = 250.0,
     capacitor_q: float = 1000.0,
+    polarities: tuple[str, ...] = ("normal",),
 ) -> tuple[OffsetOptimizationSweepResult, ...]:
     """Run Topology B optimization over common-length plus port-2 offsets.
 
@@ -331,41 +367,49 @@ def optimize_offset_feedline_sweep(
         target_voltage_ratio_magnitude,
         target_voltage_ratio_phase_deg,
     )
+    validated_polarities = _validated_polarities(polarities)
     results = []
     for candidate in candidates:
-        optimization_result = optimize_topology_b(
-            frequency_hz=frequency_hz,
-            z1=candidate.port1_box_impedance_ohms,
-            z2=candidate.port2_box_impedance_ohms,
-            target_ratio=target_ratio,
-            target_input_impedance=target_input_impedance_ohms,
-            weights=weights,
-            maxiter=maxiter,
-            bound_penalty_weight=bound_penalty_weight,
-        )
-        stress_report = None
-        if input_power_watts is not None:
-            stress_report = estimate_topology_b_stress(
-                result=optimization_result.result,
+        for polarity in validated_polarities:
+            adjusted_target_ratio = adjusted_target_ratio_for_polarity(
+                target_ratio,
+                polarity,
+            )
+            optimization_result = optimize_topology_b(
                 frequency_hz=frequency_hz,
                 z1=candidate.port1_box_impedance_ohms,
                 z2=candidate.port2_box_impedance_ohms,
-                input_power_watts=input_power_watts,
-                inductor_q=inductor_q,
-                capacitor_q=capacitor_q,
+                target_ratio=adjusted_target_ratio,
+                target_input_impedance=target_input_impedance_ohms,
+                weights=weights,
+                maxiter=maxiter,
+                bound_penalty_weight=bound_penalty_weight,
             )
-        results.append(
-            OffsetOptimizationSweepResult(
-                candidate=candidate,
-                optimization_result=optimization_result,
-                achieved_ratio_magnitude=optimization_result.v_ratio_magnitude,
-                achieved_ratio_phase_deg=optimization_result.v_ratio_phase_deg,
-                zin_ohms=optimization_result.z_input,
-                swr=optimization_result.swr,
-                score_or_objective=optimization_result.score.total_score,
-                stress_report=stress_report,
+            stress_report = None
+            if input_power_watts is not None:
+                stress_report = estimate_topology_b_stress(
+                    result=optimization_result.result,
+                    frequency_hz=frequency_hz,
+                    z1=candidate.port1_box_impedance_ohms,
+                    z2=candidate.port2_box_impedance_ohms,
+                    input_power_watts=input_power_watts,
+                    inductor_q=inductor_q,
+                    capacitor_q=capacitor_q,
+                )
+            results.append(
+                OffsetOptimizationSweepResult(
+                    candidate=candidate,
+                    optimization_result=optimization_result,
+                    achieved_ratio_magnitude=optimization_result.v_ratio_magnitude,
+                    achieved_ratio_phase_deg=optimization_result.v_ratio_phase_deg,
+                    zin_ohms=optimization_result.z_input,
+                    swr=optimization_result.swr,
+                    score_or_objective=optimization_result.score.total_score,
+                    stress_report=stress_report,
+                    polarity=polarity,
+                    target_ratio_was_inverted=polarity != "normal",
+                )
             )
-        )
 
     return tuple(sorted(results, key=_offset_ranking_key))
 
@@ -543,6 +587,17 @@ def _offset_ranking_key(result: OffsetOptimizationSweepResult):
         result.swr,
         total_feedline_length_m,
     )
+
+
+def _validated_polarities(polarities) -> tuple[str, ...]:
+    if not polarities:
+        raise ValueError("polarities must contain at least one value")
+    validated = []
+    for polarity in polarities:
+        adjusted_target_ratio_for_polarity(1 + 0j, polarity)
+        if polarity not in validated:
+            validated.append(polarity)
+    return tuple(validated)
 
 
 def _component_value_warnings(

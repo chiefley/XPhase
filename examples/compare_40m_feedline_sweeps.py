@@ -28,6 +28,7 @@ DEFAULT_CSV_PATH = REPO_ROOT / "reports" / "40m_feedline_sweep_comparison.csv"
 
 def main() -> None:
     args = _parse_args()
+    polarities = _selected_polarities(args.include_polarity_variants)
     case_path = REPO_ROOT / "cases" / "40m_inverted_v_feedpoints_plus_y_7020khz.json"
     case_data = load_case(case_path)
     frequency_hz = case_data["frequency_hz"]
@@ -52,6 +53,7 @@ def main() -> None:
         "input_power_watts": case_data["power_watts"],
         "inductor_q": case_data["component_assumptions"]["inductor_q"],
         "capacitor_q": case_data["component_assumptions"]["capacitor_q"],
+        "polarities": polarities,
     }
 
     equal_results = optimize_equal_length_feedline_sweep(
@@ -85,6 +87,11 @@ def main() -> None:
     print("equal sweep: port1_length = port2_length = 60 ft to 90 ft by 5 ft")
     print("offset sweep: common 75 ft to 95 ft by 5 ft, offset -25 ft to +25 ft by 5 ft")
     print("offset convention: positive offset adds coax to port 2, the forward +Y reference source")
+    if args.include_polarity_variants:
+        print("polarity variants: normal, invert_port1, invert_port2")
+        print("inverting either port shifts the optimizer V2/V1 target by 180 degrees")
+    else:
+        print("polarity variants: normal only")
     print("")
 
     _print_section("A: top mathematical equal-length candidates", equal_summaries, args)
@@ -127,6 +134,11 @@ def _parse_args(argv=None) -> argparse.Namespace:
         default=DEFAULT_CSV_PATH,
         help=f"CSV output path when --write-csv is used; default: {DEFAULT_CSV_PATH}",
     )
+    parser.add_argument(
+        "--include-polarity-variants",
+        action="store_true",
+        help="also evaluate invert_port1 and invert_port2 target conventions",
+    )
     return parser.parse_args(argv)
 
 
@@ -134,13 +146,15 @@ def _print_section(title: str, summaries, args: argparse.Namespace) -> None:
     displayed = summaries if args.show_all else summaries[: args.limit]
     print(title)
     print(
-        "rank  mode          common  offset  p1_len  p2_len  SWR      score      "
-        "loss    eff    worstV       worstI       worstLoss    warn"
+        "rank  mode          polarity       common  offset  p1_len  p2_len  "
+        "SWR      score      loss    eff    worstV       worstI       "
+        "worstLoss    warn"
     )
     for rank, summary in enumerate(displayed, start=1):
         print(
             f"{rank:>4}  "
             f"{summary.mode:<12}  "
+            f"{summary.polarity:<13}  "
             f"{summary.common_length:>6.1f}  "
             f"{_format_offset(summary.offset):>6}  "
             f"{summary.port1_length:>6.1f}  "
@@ -201,6 +215,12 @@ def _math_rank_by_mode(equal_summaries, offset_summaries) -> dict:
         for rank, summary in enumerate(summaries, start=1):
             ranked[summary] = rank
     return ranked
+
+
+def _selected_polarities(include_variants: bool) -> tuple[str, ...]:
+    if include_variants:
+        return ("normal", "invert_port1", "invert_port2")
+    return ("normal",)
 
 
 if __name__ == "__main__":

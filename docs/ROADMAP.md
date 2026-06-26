@@ -56,13 +56,13 @@ Implemented now:
 - fixed-feedline example using NEC feedpoint data for a +Y 40 m test case
 - equal-length center-frequency feedline sweep
 - differential/offset center-frequency feedline sweep using `port2_length = common_length + offset`
+- center-frequency normal, port-1-inverted, and port-2-inverted voltage-reference variants
 - tests for core topology, ngspice behavior, feedline transformation, feedline sweeps, and the +Y feedpoint case
 
 Known limitations:
 
 - no full independent feedline length grid yet
 - no feedline loss model yet
-- no feedline polarity/inversion search yet
 - no direct NEC parsing
 - no first-class target `I2/I1`
 - no frequency sweep or bandwidth score
@@ -135,6 +135,12 @@ Search modes to support in stages:
    - vary both feedlines independently
    - example: every port 1 length against every port 2 length
    - useful as a broad search, but can produce many combinations quickly
+
+Implemented polarity variants may be evaluated with the equal-length and offset
+search modes. Normal polarity uses the original `V2/V1` target. Inverting port 1
+or port 2 reverses that port's voltage/current reference and shifts the target
+ratio by 180 degrees without changing the transformed feedpoint impedance.
+Both-inverted is equivalent to normal for `V2/V1` and is not emitted separately.
 
 Tasks:
 
