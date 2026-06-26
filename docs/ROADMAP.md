@@ -54,11 +54,13 @@ Implemented now:
 - ngspice export and batch verification
 - lossless feedline transformation from NEC feedpoint reference plane to phasing-box reference plane
 - fixed-feedline example using NEC feedpoint data for a +Y 40 m test case
-- tests for core topology, ngspice behavior, feedline transformation, and the +Y feedpoint case
+- equal-length center-frequency feedline sweep
+- differential/offset center-frequency feedline sweep using `port2_length = common_length + offset`
+- tests for core topology, ngspice behavior, feedline transformation, feedline sweeps, and the +Y feedpoint case
 
 Known limitations:
 
-- no feedline-length sweep yet
+- no full independent feedline length grid yet
 - no feedline loss model yet
 - no feedline polarity/inversion search yet
 - no direct NEC parsing
@@ -125,6 +127,7 @@ Search modes to support in stages:
    - vary one feedline relative to the other
    - example: port 1 fixed at 70 ft while port 2 is 60, 65, 70, 75, 80 ft
    - alternatively use common length plus offset: `port2_length = common_length + offset`
+   - current convention: positive offset adds physical coax length to port 2, the forward +Y NEC voltage phase-reference source
    - useful when intentional extra length in one element path reduces component values or stress
    - direction switching may require switching the extra line length along with the network, but XPhase should still evaluate the RF tradeoff
 

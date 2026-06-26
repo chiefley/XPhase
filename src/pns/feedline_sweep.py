@@ -49,6 +49,37 @@ class EqualLengthOptimizationSweepResult:
     stress_report: TopologyBStressReport | None = None
 
 
+@dataclass(frozen=True)
+class OffsetFeedlineCandidate:
+    """One common length plus port-2 offset transformed to box-end impedances."""
+
+    common_length: float
+    offset: float
+    length_unit: str
+    port1_length: float
+    port2_length: float
+    port1_length_m: float
+    port2_length_m: float
+    port1_box_impedance_ohms: complex
+    port2_box_impedance_ohms: complex
+    port1_electrical_length_deg: float
+    port2_electrical_length_deg: float
+
+
+@dataclass(frozen=True)
+class OffsetOptimizationSweepResult:
+    """Topology B optimization result for one offset feedline sweep candidate."""
+
+    candidate: OffsetFeedlineCandidate
+    optimization_result: TopologyBOptimizationResult
+    achieved_ratio_magnitude: float
+    achieved_ratio_phase_deg: float
+    zin_ohms: complex
+    swr: float
+    score_or_objective: float
+    stress_report: TopologyBStressReport | None = None
+
+
 def equal_length_grid(
     start: float,
     stop: float,
@@ -59,6 +90,32 @@ def equal_length_grid(
         raise ValueError("start must be nonnegative")
     if stop < 0:
         raise ValueError("stop must be nonnegative")
+    if step <= 0:
+        raise ValueError("step must be greater than 0")
+    if stop < start:
+        raise ValueError("stop must be greater than or equal to start")
+    if start == stop:
+        return (start,)
+
+    values = []
+    index = 0
+    tolerance = max(abs(step), abs(stop - start), 1.0) * 1e-12
+    while True:
+        value = start + index * step
+        if value > stop + tolerance:
+            break
+        values.append(stop if abs(value - stop) <= tolerance else value)
+        index += 1
+
+    return tuple(values)
+
+
+def offset_grid(
+    start: float,
+    stop: float,
+    step: float,
+) -> tuple[float, ...]:
+    """Return an inclusive offset grid. Offsets may be negative."""
     if step <= 0:
         raise ValueError("step must be greater than 0")
     if stop < start:
@@ -104,6 +161,53 @@ def generate_equal_length_feedline_candidates(
         )
         for length in lengths
     )
+
+
+def generate_offset_feedline_candidates(
+    z1_feedpoint_ohms: complex,
+    z2_feedpoint_ohms: complex,
+    frequency_hz: float,
+    characteristic_impedance_ohms: float,
+    velocity_factor: float,
+    start_common_length: float,
+    stop_common_length: float,
+    common_step: float,
+    start_offset: float,
+    stop_offset: float,
+    offset_step: float,
+    length_unit: str = "ft",
+) -> tuple[OffsetFeedlineCandidate, ...]:
+    """Generate transformed candidates for common length plus port-2 offset.
+
+    Sign convention: port 2 is the forward +Y element and the NEC voltage
+    phase-reference source. Positive offset adds physical coax length to port 2
+    relative to port 1.
+    """
+    common_lengths = equal_length_grid(
+        start_common_length,
+        stop_common_length,
+        common_step,
+    )
+    offsets = offset_grid(start_offset, stop_offset, offset_step)
+    candidates = []
+    for common_length in common_lengths:
+        for offset in offsets:
+            port2_length = common_length + offset
+            if port2_length < 0:
+                continue
+            candidates.append(
+                _offset_candidate(
+                    z1_feedpoint_ohms=z1_feedpoint_ohms,
+                    z2_feedpoint_ohms=z2_feedpoint_ohms,
+                    frequency_hz=frequency_hz,
+                    characteristic_impedance_ohms=characteristic_impedance_ohms,
+                    velocity_factor=velocity_factor,
+                    common_length=common_length,
+                    offset=offset,
+                    length_unit=length_unit,
+                )
+            )
+    return tuple(candidates)
 
 
 def optimize_equal_length_feedline_sweep(
@@ -181,6 +285,91 @@ def optimize_equal_length_feedline_sweep(
     return tuple(sorted(results, key=_ranking_key))
 
 
+def optimize_offset_feedline_sweep(
+    z1_feedpoint_ohms: complex,
+    z2_feedpoint_ohms: complex,
+    frequency_hz: float,
+    target_voltage_ratio_magnitude: float,
+    target_voltage_ratio_phase_deg: float,
+    target_input_impedance_ohms: complex = 50 + 0j,
+    characteristic_impedance_ohms: float = 50.0,
+    velocity_factor: float = 0.66,
+    start_common_length: float = 0.0,
+    stop_common_length: float = 0.0,
+    common_step: float = 1.0,
+    start_offset: float = 0.0,
+    stop_offset: float = 0.0,
+    offset_step: float = 1.0,
+    length_unit: str = "ft",
+    weights: ObjectiveWeights | Mapping[str, float] | None = None,
+    maxiter: int = 60,
+    bound_penalty_weight: float = 0.0,
+    input_power_watts: float | None = None,
+    inductor_q: float = 250.0,
+    capacitor_q: float = 1000.0,
+) -> tuple[OffsetOptimizationSweepResult, ...]:
+    """Run Topology B optimization over common-length plus port-2 offsets.
+
+    Ranking uses existing optimizer score, SWR, then total physical feedline
+    length as a deterministic tie-breaker. It is not a practicality score.
+    """
+    candidates = generate_offset_feedline_candidates(
+        z1_feedpoint_ohms=z1_feedpoint_ohms,
+        z2_feedpoint_ohms=z2_feedpoint_ohms,
+        frequency_hz=frequency_hz,
+        characteristic_impedance_ohms=characteristic_impedance_ohms,
+        velocity_factor=velocity_factor,
+        start_common_length=start_common_length,
+        stop_common_length=stop_common_length,
+        common_step=common_step,
+        start_offset=start_offset,
+        stop_offset=stop_offset,
+        offset_step=offset_step,
+        length_unit=length_unit,
+    )
+    target_ratio = polar_to_complex(
+        target_voltage_ratio_magnitude,
+        target_voltage_ratio_phase_deg,
+    )
+    results = []
+    for candidate in candidates:
+        optimization_result = optimize_topology_b(
+            frequency_hz=frequency_hz,
+            z1=candidate.port1_box_impedance_ohms,
+            z2=candidate.port2_box_impedance_ohms,
+            target_ratio=target_ratio,
+            target_input_impedance=target_input_impedance_ohms,
+            weights=weights,
+            maxiter=maxiter,
+            bound_penalty_weight=bound_penalty_weight,
+        )
+        stress_report = None
+        if input_power_watts is not None:
+            stress_report = estimate_topology_b_stress(
+                result=optimization_result.result,
+                frequency_hz=frequency_hz,
+                z1=candidate.port1_box_impedance_ohms,
+                z2=candidate.port2_box_impedance_ohms,
+                input_power_watts=input_power_watts,
+                inductor_q=inductor_q,
+                capacitor_q=capacitor_q,
+            )
+        results.append(
+            OffsetOptimizationSweepResult(
+                candidate=candidate,
+                optimization_result=optimization_result,
+                achieved_ratio_magnitude=optimization_result.v_ratio_magnitude,
+                achieved_ratio_phase_deg=optimization_result.v_ratio_phase_deg,
+                zin_ohms=optimization_result.z_input,
+                swr=optimization_result.swr,
+                score_or_objective=optimization_result.score.total_score,
+                stress_report=stress_report,
+            )
+        )
+
+    return tuple(sorted(results, key=_offset_ranking_key))
+
+
 def format_component_value(component_type: str, value_si: float) -> str:
     """Return a compact human-readable L/C value."""
     if component_type == "L":
@@ -191,7 +380,7 @@ def format_component_value(component_type: str, value_si: float) -> str:
 
 
 def practical_warnings(
-    result: EqualLengthOptimizationSweepResult,
+    result: EqualLengthOptimizationSweepResult | OffsetOptimizationSweepResult,
 ) -> tuple[str, ...]:
     """Return conservative practicality warnings for one sweep result."""
     warnings: list[str] = []
@@ -259,6 +448,60 @@ def _equal_length_candidate(
     )
 
 
+def _offset_candidate(
+    z1_feedpoint_ohms: complex,
+    z2_feedpoint_ohms: complex,
+    frequency_hz: float,
+    characteristic_impedance_ohms: float,
+    velocity_factor: float,
+    common_length: float,
+    offset: float,
+    length_unit: str,
+) -> OffsetFeedlineCandidate:
+    port1_length = common_length
+    port2_length = common_length + offset
+    port1_length_m = _length_to_meters(port1_length, length_unit)
+    port2_length_m = _length_to_meters(port2_length, length_unit)
+    feedline1 = LosslessCoaxLine(
+        characteristic_impedance_ohms=characteristic_impedance_ohms,
+        velocity_factor=velocity_factor,
+        length_m=port1_length_m,
+    )
+    feedline2 = LosslessCoaxLine(
+        characteristic_impedance_ohms=characteristic_impedance_ohms,
+        velocity_factor=velocity_factor,
+        length_m=port2_length_m,
+    )
+    z1_box, z2_box = transform_two_feedpoints_to_box_end(
+        z1_feedpoint_ohms,
+        z2_feedpoint_ohms,
+        frequency_hz,
+        feedline1,
+        feedline2,
+    )
+    return OffsetFeedlineCandidate(
+        common_length=common_length,
+        offset=offset,
+        length_unit=length_unit,
+        port1_length=port1_length,
+        port2_length=port2_length,
+        port1_length_m=port1_length_m,
+        port2_length_m=port2_length_m,
+        port1_box_impedance_ohms=z1_box,
+        port2_box_impedance_ohms=z2_box,
+        port1_electrical_length_deg=_electrical_length_deg(
+            port1_length_m,
+            frequency_hz,
+            velocity_factor,
+        ),
+        port2_electrical_length_deg=_electrical_length_deg(
+            port2_length_m,
+            frequency_hz,
+            velocity_factor,
+        ),
+    )
+
+
 def _length_to_meters(length: float, unit: str) -> float:
     normalized = unit.lower()
     if normalized in {"ft", "foot", "feet"}:
@@ -285,6 +528,20 @@ def _ranking_key(result: EqualLengthOptimizationSweepResult):
         score,
         result.swr,
         result.candidate.common_length_m,
+    )
+
+
+def _offset_ranking_key(result: OffsetOptimizationSweepResult):
+    score = result.score_or_objective
+    if not math.isfinite(score):
+        score = math.inf
+    total_feedline_length_m = (
+        result.candidate.port1_length_m + result.candidate.port2_length_m
+    )
+    return (
+        score,
+        result.swr,
+        total_feedline_length_m,
     )
 
 

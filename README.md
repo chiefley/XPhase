@@ -22,6 +22,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 - Topology B input L-match synthesis
 - additive lossless feedpoint-to-box-end coax transformation layer
 - equal-length feedline sweep at the design frequency
+- differential/offset feedline sweep at the design frequency
 - post-solve component voltage/current estimates
 - estimated loss using component Q
 - LTspice netlist export
@@ -30,7 +31,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 ## Current limitations
 
 - general coax length ranges are not searched yet
-- independent or offset feedline length grids are not searched yet
+- full independent feedline length grids are not searched yet
 - feedline polarity/inversion combinations are not searched yet
 - case files still provide fixed complex port/feedline impedances
 - target element current ratio is not yet a first-class input
