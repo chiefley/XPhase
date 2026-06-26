@@ -30,6 +30,9 @@ XPhase should remain focused on feed-system synthesis for two-element HF arrays.
 - NEC models the antenna. XPhase models the feed system.
 - Prefer element current ratio as the user-facing phasing target, because the array pattern is driven by element currents.
 - Keep voltage ratio support because the current implementation uses `V2/V1`, and voltage ratios are useful for internal network calculations.
+- Treat feedline length variation and bandwidth evaluation as separate concerns:
+  - feedline length variation is a center-frequency candidate-generation problem
+  - bandwidth evaluation is a frozen-design verification problem
 - Treat single-frequency optimization as only the first pass.
 - Freeze solved component values when evaluating bandwidth. Do not re-optimize components at each frequency point when judging a physical design.
 - Prefer practical, buildable solutions over mathematically exact but fragile or high-stress solutions.
@@ -49,13 +52,15 @@ Implemented now:
 - component stress and Q-loss estimates
 - LTspice export
 - ngspice export and batch verification
-- tests for core topology and ngspice behavior
+- lossless feedline transformation from NEC feedpoint reference plane to phasing-box reference plane
+- fixed-feedline example using NEC feedpoint data for a +Y 40 m test case
+- tests for core topology, ngspice behavior, feedline transformation, and the +Y feedpoint case
 
 Known limitations:
 
-- fixed port/feedline impedances only
-- no feedline-length sweep
-- no coax model abstraction
+- no feedline-length sweep yet
+- no feedline loss model yet
+- no feedline polarity/inversion search yet
 - no direct NEC parsing
 - no first-class target `I2/I1`
 - no frequency sweep or bandwidth score
@@ -96,15 +101,44 @@ Acceptance criteria:
 - Given a load impedance, frequency, coax `Z0`, velocity factor, and length, XPhase returns the transformed impedance at the network end.
 - Unit tests cover important transmission-line edge cases.
 
-## Stage 3: feedline-length sweep
+## Stage 3: feedline-length variation and candidate generation
 
 Goal: search practical physical feedline lengths before solving the phasing network.
+
+This stage is a center-frequency candidate-generation problem. It should answer: for the design frequency, feedpoint impedances, feedline type, and allowed physical lengths, what box-end impedances and network solutions are available?
+
+Keep the candidate generator separate from the network optimizer. Feedline search modes can be clever, but they should all emit concrete candidate pairs:
+
+- port 1 physical feedline length
+- port 2 physical feedline length
+- transformed port 1 box-end impedance
+- transformed port 2 box-end impedance
+
+Search modes to support in stages:
+
+1. Balanced or equal-length sweep
+   - vary both feedlines together
+   - example: 60/60 ft, 65/65 ft, 70/70 ft
+   - useful for finding whether a shared physical length produces more practical network values
+
+2. One-feedline or differential-offset sweep
+   - vary one feedline relative to the other
+   - example: port 1 fixed at 70 ft while port 2 is 60, 65, 70, 75, 80 ft
+   - alternatively use common length plus offset: `port2_length = common_length + offset`
+   - useful when intentional extra length in one element path reduces component values or stress
+   - direction switching may require switching the extra line length along with the network, but XPhase should still evaluate the RF tradeoff
+
+3. Full independent grid sweep
+   - vary both feedlines independently
+   - example: every port 1 length against every port 2 length
+   - useful as a broad search, but can produce many combinations quickly
 
 Tasks:
 
 - Add feedline length range inputs for port 1 and port 2.
 - Add step-size control for feedline sweep resolution.
-- For each length pair, transform both feedpoint impedances to the phasing-box end.
+- Add explicit search-mode support rather than assuming only a full independent grid.
+- For each concrete length pair, transform both feedpoint impedances to the phasing-box end.
 - Run the existing topology optimizer against each transformed load pair.
 - Return a ranked list of candidates instead of only one result.
 - Add pruning rules for obviously bad or duplicate candidates.
@@ -114,6 +148,7 @@ Acceptance criteria:
 - A case can specify practical feedline ranges, such as 30 to 90 feet for each element.
 - XPhase can produce multiple candidate network solutions for different length pairs.
 - Results include feedline lengths, transformed impedances, network values, phasing error, SWR, stress, and loss.
+- Results identify which search mode produced each candidate.
 
 ## Stage 4: current-ratio targets
 
@@ -137,7 +172,28 @@ Acceptance criteria:
 
 Goal: evaluate each physical candidate across a frequency range.
 
-Important rule: solve the network at the design frequency, then freeze the physical feedline lengths and component values. Re-evaluate that same physical design across the requested frequency range.
+This stage is separate from feedline-length variation. Feedline variation chooses candidate physical lengths and network values at the design frequency. Bandwidth evaluation verifies a selected physical design across frequency.
+
+Important rule: solve the network at the design frequency, then freeze the physical feedline lengths and component values. Re-evaluate that same physical design across the requested frequency range. Do not re-optimize components or feedline lengths at each frequency point when judging a physical design.
+
+Bandwidth evaluation should be staged by confidence level:
+
+1. Level 1: frozen-load network-only bandwidth
+   - use the design-frequency NEC feedpoint impedances at every frequency point
+   - sweep the feedline electrical lengths and L/C reactances with frequency
+   - compute SWR, achieved `V2/V1`, component stress, and loss
+   - useful as a first screen for obviously narrow or fragile network solutions
+   - not a proof of real array pattern bandwidth
+
+2. Level 2: frequency-dependent NEC feedpoint impedance bandwidth
+   - use NEC-derived feedpoint impedances at each frequency point
+   - better evaluates SWR and network behavior as antenna loads move with frequency
+   - still does not fully prove array pattern bandwidth unless the target current behavior is also evaluated consistently
+
+3. Level 3: full NEC current/pattern verification
+   - verify the selected physical design against NEC current ratios and/or patterns across frequency
+   - this is the real proof for gain, front-to-back ratio, and pattern bandwidth
+   - XPhase can screen and report candidates, but NEC remains the authority for antenna physics
 
 Metrics to compute across the sweep:
 
@@ -165,6 +221,7 @@ Acceptance criteria:
 
 - A candidate has center-frequency results and swept-frequency results.
 - Results distinguish phasing bandwidth from SWR bandwidth.
+- Results identify which bandwidth confidence level was used.
 - Ranking can prefer a slightly imperfect but broadband solution over a perfect narrowband solution.
 
 ## Stage 6: practicality scoring
@@ -239,12 +296,12 @@ Acceptance criteria:
 
 ## Near-term recommended next tasks
 
-1. Add this roadmap and keep the README concise.
-2. Document the current case schema.
-3. Add a lossless feedline transformer with tests.
-4. Add feedline range fields to a new example case, without changing the existing optimizer yet.
-5. Build a feedline sweep driver that runs the existing Topology B optimizer over transformed load pairs.
-6. Add bandwidth evaluation after the feedline sweep can produce multiple candidates.
+1. Build a feedline sweep candidate generator that can emit concrete length pairs and transformed box-end impedances.
+2. Start with a balanced/equal-length sweep and a small full-grid sweep example.
+3. Add an optimizer runner around the sweep that uses the existing Topology B optimizer without changing solver internals.
+4. Add result-table reporting that includes search mode, feedline lengths, transformed impedances, network values, SWR, stress, and loss.
+5. Add Level 1 frozen-load bandwidth evaluation only after feedline sweep can produce multiple candidates.
+6. Add frequency-dependent NEC feedpoint data and Level 2 bandwidth evaluation later.
 
 ## Notes for AI-assisted development
 
