@@ -70,6 +70,12 @@ center-frequency metrics:
 python3 examples/compare_40m_feedline_sweeps.py
 ```
 
+Write the same combined sweep comparison data to CSV:
+
+```bash
+python3 examples/compare_40m_feedline_sweeps.py --write-csv
+```
+
 Write the LTspice netlist:
 
 ```bash

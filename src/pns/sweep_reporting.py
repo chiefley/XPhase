@@ -2,10 +2,44 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 import math
+from pathlib import Path
 
 from pns.feedline_sweep import practical_warnings
+
+
+CSV_FIELDNAMES = (
+    "rank_math_within_mode",
+    "rank_practical_combined",
+    "mode",
+    "common_length",
+    "offset",
+    "port1_length",
+    "port2_length",
+    "length_unit",
+    "port1_box_r_ohms",
+    "port1_box_x_ohms",
+    "port2_box_r_ohms",
+    "port2_box_x_ohms",
+    "achieved_v2_over_v1_magnitude",
+    "achieved_v2_over_v1_phase_deg",
+    "zin_r_ohms",
+    "zin_x_ohms",
+    "swr",
+    "score_or_objective",
+    "total_estimated_loss_watts",
+    "estimated_efficiency_percent",
+    "worst_rms_voltage",
+    "worst_rms_voltage_component",
+    "worst_rms_current",
+    "worst_rms_current_component",
+    "worst_component_loss_watts",
+    "worst_component_loss_name",
+    "warning_count",
+    "warnings",
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +123,92 @@ def practical_sort_key(summary: SweepCandidateSummary):
         summary.swr,
         _missing_as_infinity(summary.score_or_objective),
     )
+
+
+def summary_to_csv_row(
+    summary: SweepCandidateSummary,
+    *,
+    rank_math_within_mode: int | None = None,
+    rank_practical_combined: int | None = None,
+) -> dict[str, object]:
+    """Convert a sweep summary to one CSV row.
+
+    Optional numeric/string fields that are unavailable are serialized as empty
+    strings. Warnings are serialized as a semicolon-separated string.
+    """
+    return {
+        "rank_math_within_mode": _csv_optional(rank_math_within_mode),
+        "rank_practical_combined": _csv_optional(rank_practical_combined),
+        "mode": summary.mode,
+        "common_length": summary.common_length,
+        "offset": _csv_optional(summary.offset),
+        "port1_length": summary.port1_length,
+        "port2_length": summary.port2_length,
+        "length_unit": summary.length_unit,
+        "port1_box_r_ohms": summary.port1_box_impedance_ohms.real,
+        "port1_box_x_ohms": summary.port1_box_impedance_ohms.imag,
+        "port2_box_r_ohms": summary.port2_box_impedance_ohms.real,
+        "port2_box_x_ohms": summary.port2_box_impedance_ohms.imag,
+        "achieved_v2_over_v1_magnitude": summary.achieved_ratio_magnitude,
+        "achieved_v2_over_v1_phase_deg": summary.achieved_ratio_phase_deg,
+        "zin_r_ohms": summary.zin_ohms.real,
+        "zin_x_ohms": summary.zin_ohms.imag,
+        "swr": summary.swr,
+        "score_or_objective": summary.score_or_objective,
+        "total_estimated_loss_watts": _csv_optional(
+            summary.total_estimated_loss_watts
+        ),
+        "estimated_efficiency_percent": _csv_optional(
+            summary.estimated_efficiency_percent
+        ),
+        "worst_rms_voltage": _csv_optional(summary.worst_rms_voltage),
+        "worst_rms_voltage_component": _csv_optional(
+            summary.worst_rms_voltage_component
+        ),
+        "worst_rms_current": _csv_optional(summary.worst_rms_current),
+        "worst_rms_current_component": _csv_optional(
+            summary.worst_rms_current_component
+        ),
+        "worst_component_loss_watts": _csv_optional(
+            summary.worst_component_loss_watts
+        ),
+        "worst_component_loss_name": _csv_optional(summary.worst_component_loss_name),
+        "warning_count": summary.warning_count,
+        "warnings": "; ".join(summary.warnings),
+    }
+
+
+def write_summaries_csv(
+    path,
+    summaries,
+    *,
+    practical_ordered_summaries=None,
+    math_rank_by_mode=None,
+) -> Path:
+    """Write combined sweep summaries to CSV and return the written path.
+
+    Optional stress/loss fields are written as empty cells when unavailable.
+    ``practical_ordered_summaries`` and ``math_rank_by_mode`` may be supplied to
+    annotate each row with practical and within-mode mathematical ranks.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    practical_rank = _rank_map(practical_ordered_summaries)
+    math_rank_by_mode = math_rank_by_mode or {}
+
+    with path.open("w", newline="") as output:
+        writer = csv.DictWriter(output, fieldnames=CSV_FIELDNAMES)
+        writer.writeheader()
+        for summary in summaries:
+            writer.writerow(
+                summary_to_csv_row(
+                    summary,
+                    rank_math_within_mode=math_rank_by_mode.get(summary),
+                    rank_practical_combined=practical_rank.get(summary),
+                )
+            )
+    return path
 
 
 def format_impedance(value: complex) -> str:
@@ -203,3 +323,15 @@ def _missing_as_infinity(value: float | None) -> float:
     if value is None:
         return math.inf
     return value
+
+
+def _csv_optional(value):
+    if value is None:
+        return ""
+    return value
+
+
+def _rank_map(summaries) -> dict[SweepCandidateSummary, int]:
+    if summaries is None:
+        return {}
+    return {summary: rank for rank, summary in enumerate(summaries, start=1)}
