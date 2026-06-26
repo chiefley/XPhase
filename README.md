@@ -63,6 +63,13 @@ running the optimizer:
 python3 examples/transform_40m_feedpoints.py
 ```
 
+Compare equal-length and offset feedline sweeps by mathematical and practical
+center-frequency metrics:
+
+```bash
+python3 examples/compare_40m_feedline_sweeps.py
+```
+
 Write the LTspice netlist:
 
 ```bash

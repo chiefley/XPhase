@@ -1,4 +1,4 @@
-"""Equal-length feedline sweep helpers."""
+"""Center-frequency feedline sweep helpers."""
 
 from __future__ import annotations
 
