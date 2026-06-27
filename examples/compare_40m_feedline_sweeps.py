@@ -139,6 +139,11 @@ def _parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="also evaluate invert_port1 and invert_port2 target conventions",
     )
+    parser.add_argument(
+        "--show-component-stress",
+        action="store_true",
+        help="show RMS voltage, current, and estimated loss for each component",
+    )
     return parser.parse_args(argv)
 
 
@@ -180,6 +185,8 @@ def _print_section(title: str, summaries, args: argparse.Namespace) -> None:
             print(f"      warnings: {', '.join(summary.warnings)}")
         else:
             print("      warnings: none")
+        if args.show_component_stress:
+            _print_component_stress(summary)
     if not args.show_all and len(summaries) > len(displayed):
         print(f"      showing top {len(displayed)} of {len(summaries)}; use --show-all for all")
     print("")
@@ -200,6 +207,20 @@ def _format_component_metric(component_name: str | None, value: str) -> str:
     if component_name is None:
         return "n/a"
     return f"{component_name}={value}"
+
+
+def _print_component_stress(summary) -> None:
+    print("      component stress:")
+    if not summary.component_stresses:
+        print("        n/a")
+        return
+    for component in summary.component_stresses:
+        print(
+            f"        {component.name:<13} "
+            f"V={component.rms_voltage:>8.2f} Vrms  "
+            f"I={component.rms_current:>7.3f} Arms  "
+            f"loss={component.loss_watts:>7.3f} W"
+        )
 
 
 def _positive_int(value: str) -> int:

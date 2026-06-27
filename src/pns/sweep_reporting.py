@@ -10,6 +10,28 @@ from pathlib import Path
 from pns.feedline_sweep import practical_warnings
 
 
+KNOWN_COMPONENT_STRESS_NAMES = (
+    "L1",
+    "C1",
+    "C2",
+    "L2",
+    "input_series",
+    "input_shunt",
+)
+
+
+def _component_stress_csv_fieldnames() -> tuple[str, ...]:
+    return tuple(
+        field_name
+        for component_name in KNOWN_COMPONENT_STRESS_NAMES
+        for field_name in (
+            f"{component_name}_rms_voltage",
+            f"{component_name}_rms_current",
+            f"{component_name}_loss_watts",
+        )
+    )
+
+
 CSV_FIELDNAMES = (
     "rank_math_within_mode",
     "rank_practical_combined",
@@ -33,6 +55,7 @@ CSV_FIELDNAMES = (
     "score_or_objective",
     "total_estimated_loss_watts",
     "estimated_efficiency_percent",
+    *_component_stress_csv_fieldnames(),
     "worst_rms_voltage",
     "worst_rms_voltage_component",
     "worst_rms_current",
@@ -42,6 +65,16 @@ CSV_FIELDNAMES = (
     "warning_count",
     "warnings",
 )
+
+
+@dataclass(frozen=True)
+class ComponentStressSummary:
+    """RMS stress and estimated loss for one synthesized component."""
+
+    name: str
+    rms_voltage: float
+    rms_current: float
+    loss_watts: float
 
 
 @dataclass(frozen=True)
@@ -73,6 +106,7 @@ class SweepCandidateSummary:
     worst_component_loss_name: str | None
     warning_count: int
     warnings: tuple[str, ...]
+    component_stresses: tuple[ComponentStressSummary, ...] = ()
 
 
 def summarize_equal_length_result(result) -> SweepCandidateSummary:
@@ -140,7 +174,7 @@ def summary_to_csv_row(
     Optional numeric/string fields that are unavailable are serialized as empty
     strings. Warnings are serialized as a semicolon-separated string.
     """
-    return {
+    row = {
         "rank_math_within_mode": _csv_optional(rank_math_within_mode),
         "rank_practical_combined": _csv_optional(rank_practical_combined),
         "mode": summary.mode,
@@ -182,6 +216,24 @@ def summary_to_csv_row(
         "warning_count": summary.warning_count,
         "warnings": "; ".join(summary.warnings),
     }
+    component_stress_by_name = {
+        component.name: component for component in summary.component_stresses
+    }
+    for component_name in KNOWN_COMPONENT_STRESS_NAMES:
+        component = component_stress_by_name.get(component_name)
+        row[f"{component_name}_rms_voltage"] = _csv_component_value(
+            component,
+            "rms_voltage",
+        )
+        row[f"{component_name}_rms_current"] = _csv_component_value(
+            component,
+            "rms_current",
+        )
+        row[f"{component_name}_loss_watts"] = _csv_component_value(
+            component,
+            "loss_watts",
+        )
+    return row
 
 
 def write_summaries_csv(
@@ -291,10 +343,11 @@ def _summary(
         worst_component_loss_name=stress_values["worst_loss_component"],
         warning_count=len(warnings),
         warnings=warnings,
+        component_stresses=stress_values["component_stresses"],
     )
 
 
-def _stress_values(stress_report) -> dict[str, float | str | None]:
+def _stress_values(stress_report) -> dict[str, object]:
     if stress_report is None:
         return {
             "total_loss": None,
@@ -305,18 +358,41 @@ def _stress_values(stress_report) -> dict[str, float | str | None]:
             "worst_current_component": None,
             "worst_loss": None,
             "worst_loss_component": None,
+            "component_stresses": (),
+        }
+
+    component_stresses = tuple(
+        ComponentStressSummary(
+            name=component.name,
+            rms_voltage=component.rms_voltage,
+            rms_current=component.rms_current,
+            loss_watts=component.loss_watts,
+        )
+        for component in stress_report.component_stresses
+    )
+    if not component_stresses:
+        return {
+            "total_loss": stress_report.total_estimated_loss_watts,
+            "efficiency": stress_report.estimated_efficiency_percent,
+            "worst_voltage": None,
+            "worst_voltage_component": None,
+            "worst_current": None,
+            "worst_current_component": None,
+            "worst_loss": None,
+            "worst_loss_component": None,
+            "component_stresses": (),
         }
 
     worst_voltage = max(
-        stress_report.component_stresses,
+        component_stresses,
         key=lambda component: component.rms_voltage,
     )
     worst_current = max(
-        stress_report.component_stresses,
+        component_stresses,
         key=lambda component: component.rms_current,
     )
     worst_loss = max(
-        stress_report.component_stresses,
+        component_stresses,
         key=lambda component: component.loss_watts,
     )
     return {
@@ -328,6 +404,7 @@ def _stress_values(stress_report) -> dict[str, float | str | None]:
         "worst_current_component": worst_current.name,
         "worst_loss": worst_loss.loss_watts,
         "worst_loss_component": worst_loss.name,
+        "component_stresses": component_stresses,
     }
 
 
@@ -341,6 +418,12 @@ def _csv_optional(value):
     if value is None:
         return ""
     return value
+
+
+def _csv_component_value(component, attribute: str):
+    if component is None:
+        return ""
+    return getattr(component, attribute)
 
 
 def _rank_map(summaries) -> dict[SweepCandidateSummary, int]:

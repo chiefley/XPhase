@@ -49,7 +49,7 @@ Implemented now:
 - Topology A optimizer
 - Topology B evaluator with input L-match
 - Topology B optimizer
-- component stress and Q-loss estimates
+- per-component RMS voltage/current stress and Q-loss estimates for reporting and CSV export
 - LTspice export
 - ngspice export and batch verification
 - lossless feedline transformation from NEC feedpoint reference plane to phasing-box reference plane
