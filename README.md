@@ -26,6 +26,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 - normal, port-1-inverted, and port-2-inverted voltage-reference variants
 - post-solve per-component RMS voltage/current estimates
 - per-component and total estimated loss using component Q
+- Level 1 static/frozen network bandwidth evaluation using fixed center-frequency feedpoint impedances
 - LTspice netlist export
 - optional ngspice batch verification
 
@@ -35,7 +36,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 - full independent feedline length grids are not searched yet
 - case files still provide fixed complex port/feedline impedances
 - target element current ratio is not yet a first-class input
-- bandwidth scoring is not implemented yet
+- full NEC frequency-sweep bandwidth is not implemented yet
 - NEC output parsing is not implemented yet
 - component voltage/current/loss are reported after optimization, not used as primary optimization objectives yet
 - practical part series and discrete component selections are not modeled yet
@@ -96,6 +97,24 @@ python3 examples/compare_40m_feedline_sweeps.py --limit 3 --show-component-stres
 ```
 
 CSV exports include these per-component stress fields automatically.
+
+Evaluate selected solved networks over a Level 1 static/frozen frequency grid:
+
+```bash
+python3 examples/evaluate_40m_static_bandwidth.py
+```
+
+Write point-level static bandwidth data to CSV:
+
+```bash
+python3 examples/evaluate_40m_static_bandwidth.py --write-csv
+```
+
+This Level 1 evaluation freezes feedline lengths, polarity, and all network
+components. It holds the NEC feedpoint impedances at their center-frequency
+values while feedline electrical lengths and component reactances vary with
+frequency. It is not a substitute for frequency-dependent NEC loads or pattern
+verification.
 
 Polarity inversion does not change the feedpoint impedance transform. Inverting
 either port changes the optimizer target `V2/V1` ratio by 180 degrees.
