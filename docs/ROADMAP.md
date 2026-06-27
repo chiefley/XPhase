@@ -57,6 +57,7 @@ Implemented now:
 - equal-length center-frequency feedline sweep
 - differential/offset center-frequency feedline sweep using `port2_length = common_length + offset`
 - center-frequency normal, port-1-inverted, and port-2-inverted voltage-reference variants
+- Level 1 static/frozen network bandwidth evaluation using fixed center-frequency NEC feedpoint impedances
 - tests for core topology, ngspice behavior, feedline transformation, feedline sweeps, and the +Y feedpoint case
 
 Known limitations:
@@ -65,7 +66,8 @@ Known limitations:
 - no feedline loss model yet
 - no direct NEC parsing
 - no first-class target `I2/I1`
-- no frequency sweep or bandwidth score
+- no Level 2 frequency-dependent NEC feedpoint bandwidth evaluation
+- no full NEC current/pattern bandwidth verification
 - no practical part-series selection
 
 ## Stage 1: clarify case schema and target conventions
@@ -187,14 +189,14 @@ Important rule: solve the network at the design frequency, then freeze the physi
 
 Bandwidth evaluation should be staged by confidence level:
 
-1. Level 1: frozen-load network-only bandwidth
+1. Level 1: frozen-load network-only bandwidth (implemented)
    - use the design-frequency NEC feedpoint impedances at every frequency point
    - sweep the feedline electrical lengths and L/C reactances with frequency
    - compute SWR, achieved `V2/V1`, component stress, and loss
    - useful as a first screen for obviously narrow or fragile network solutions
    - not a proof of real array pattern bandwidth
 
-2. Level 2: frequency-dependent NEC feedpoint impedance bandwidth
+2. Level 2: frequency-dependent NEC feedpoint impedance bandwidth (future)
    - use NEC-derived feedpoint impedances at each frequency point
    - better evaluates SWR and network behavior as antenna loads move with frequency
    - still does not fully prove array pattern bandwidth unless the target current behavior is also evaluated consistently
