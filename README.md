@@ -24,8 +24,8 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged development plan.
 - equal-length feedline sweep at the design frequency
 - differential/offset feedline sweep at the design frequency
 - normal, port-1-inverted, and port-2-inverted voltage-reference variants
-- post-solve component voltage/current estimates
-- estimated loss using component Q
+- post-solve per-component RMS voltage/current estimates
+- per-component and total estimated loss using component Q
 - LTspice netlist export
 - optional ngspice batch verification
 
@@ -87,6 +87,15 @@ Write all physical and polarity candidates to CSV:
 ```bash
 python3 examples/compare_40m_feedline_sweeps.py --include-polarity-variants --write-csv
 ```
+
+Show the per-component RMS voltage, current, and estimated loss for displayed
+candidates:
+
+```bash
+python3 examples/compare_40m_feedline_sweeps.py --limit 3 --show-component-stress
+```
+
+CSV exports include these per-component stress fields automatically.
 
 Polarity inversion does not change the feedpoint impedance transform. Inverting
 either port changes the optimizer target `V2/V1` ratio by 180 degrees.

@@ -7,6 +7,7 @@ import pytest
 
 from pns.sweep_reporting import (
     CSV_FIELDNAMES,
+    ComponentStressSummary,
     SweepCandidateSummary,
     practical_sort_key,
     summary_to_csv_row,
@@ -34,6 +35,10 @@ def test_summary_extraction_works_for_equal_length_result_like_object():
     assert summary.worst_rms_current_component == "L1"
     assert summary.worst_component_loss_watts == pytest.approx(2.0)
     assert summary.worst_component_loss_name == "L1"
+    assert [component.name for component in summary.component_stresses] == ["L1", "C1"]
+    assert summary.component_stresses[0].rms_voltage == pytest.approx(100.0)
+    assert summary.component_stresses[0].rms_current == pytest.approx(6.0)
+    assert summary.component_stresses[0].loss_watts == pytest.approx(2.0)
 
 
 def test_summary_extraction_works_for_offset_result_like_object():
@@ -70,6 +75,7 @@ def test_summary_handles_missing_stress_report():
     assert summary.worst_rms_voltage is None
     assert summary.worst_rms_current is None
     assert summary.worst_component_loss_watts is None
+    assert summary.component_stresses == ()
 
 
 def test_practical_sort_key_prefers_fewer_warnings_then_lower_loss_and_stress():
@@ -137,6 +143,11 @@ def test_summary_to_csv_row_serializes_representative_summary():
     assert row["port1_box_r_ohms"] == pytest.approx(50.0)
     assert row["port2_box_x_ohms"] == pytest.approx(-2.0)
     assert row["warnings"] == "C2 high current; L1 high loss"
+    assert row["L1_rms_voltage"] == pytest.approx(100.0)
+    assert row["L1_rms_current"] == pytest.approx(6.0)
+    assert row["L1_loss_watts"] == pytest.approx(2.0)
+    assert row["C1_rms_voltage"] == pytest.approx(300.0)
+    assert row["input_series_rms_voltage"] == ""
 
 
 def test_summary_to_csv_row_serializes_missing_optional_values_as_empty_strings():
@@ -150,6 +161,7 @@ def test_summary_to_csv_row_serializes_missing_optional_values_as_empty_strings(
         worst_rms_current_component=None,
         worst_component_loss_watts=None,
         worst_component_loss_name=None,
+        component_stresses=(),
     )
 
     row = summary_to_csv_row(summary)
@@ -163,6 +175,8 @@ def test_summary_to_csv_row_serializes_missing_optional_values_as_empty_strings(
     assert row["worst_rms_current_component"] == ""
     assert row["worst_component_loss_watts"] == ""
     assert row["worst_component_loss_name"] == ""
+    assert row["L1_rms_voltage"] == ""
+    assert row["input_shunt_loss_watts"] == ""
 
 
 def test_write_summaries_csv_creates_file_with_header_and_row(tmp_path):
@@ -207,6 +221,14 @@ def test_comparison_example_parser_accepts_include_polarity_variants():
     args = module._parse_args(["--include-polarity-variants"])
 
     assert args.include_polarity_variants is True
+
+
+def test_comparison_example_parser_accepts_show_component_stress():
+    module = _load_compare_example_module()
+
+    args = module._parse_args(["--show-component-stress"])
+
+    assert args.show_component_stress is True
 
 
 def _result(mode: str, stress_report=None, polarity: str = "normal"):
@@ -319,6 +341,20 @@ def _candidate_summary(**overrides):
         "worst_component_loss_name": "L1",
         "warning_count": 2,
         "warnings": ("C2 high current", "L1 high loss"),
+        "component_stresses": (
+            ComponentStressSummary(
+                name="L1",
+                rms_voltage=100.0,
+                rms_current=6.0,
+                loss_watts=2.0,
+            ),
+            ComponentStressSummary(
+                name="C1",
+                rms_voltage=300.0,
+                rms_current=1.0,
+                loss_watts=0.5,
+            ),
+        ),
     }
     values.update(overrides)
     return SweepCandidateSummary(**values)
